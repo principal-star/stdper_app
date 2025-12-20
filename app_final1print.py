@@ -272,7 +272,10 @@ def compute_semester_arrears_from_row(row: dict):
 
 
 # ---------------- ROUTES ---------------- #
-
+@app.route("/test")
+def test():
+    return "Flask is working"
+    
 @app.route("/")
 def home():
     sheets = list_sheets()
@@ -931,6 +934,7 @@ def autosave_pdf():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
