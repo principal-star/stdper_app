@@ -3,7 +3,7 @@ from flask import Flask, render_template, request, jsonify, send_file
 import gspread
 import pandas as pd
 import re
-from oauth2client.service_account import ServiceAccountCredentials
+#from oauth2client.service_account import ServiceAccountCredentials
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -16,7 +16,7 @@ from flask import Flask, render_template
 from flask import send_file
 
 import pdfkit
-
+from google.oauth2.service_account import Credentials
 import tempfile
 import os
 from flask import request, send_file
@@ -930,4 +930,5 @@ def autosave_pdf():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
