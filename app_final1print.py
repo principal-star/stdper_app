@@ -24,11 +24,11 @@ from playwright.sync_api import sync_playwright
 import tempfile
 import os
 app = Flask(__name__)
-
+"""
 @app.route("/")
 def home():
-    return render_template("home.final1print.html")
-
+    return render_template("home_final1print.html")
+"""
 if __name__ == "__main__":
     app.run()
 
@@ -930,3 +930,4 @@ def autosave_pdf():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
