@@ -24,11 +24,11 @@ from playwright.sync_api import sync_playwright
 import tempfile
 import os
 app = Flask(__name__)
-"""
+
 @app.route("/")
 def home():
     return render_template("home_final1print.html")
-"""
+
 if __name__ == "__main__":
     app.run()
 
@@ -271,12 +271,12 @@ def compute_semester_arrears_from_row(row: dict):
 
 
 # ---------------- ROUTES ---------------- #
-
+"""
 @app.route("/")
 def home():
     sheets = list_sheets()
     return render_template("home_final1print.html", sheets=sheets, analytics_fields=ANALYTICS_FIELDS)
-
+"""
 
 @app.route("/refresh_cache", methods=["POST", "GET"])
 def refresh_cache():
@@ -930,5 +930,6 @@ def autosave_pdf():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
