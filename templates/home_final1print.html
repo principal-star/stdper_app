@@ -1044,7 +1044,35 @@ function autoSavePDF() {
     });
 }
 
+/*new features added from here*/
+async function loadSubjectPass() {
+    const sheet = qs("sheetSelect").value;
+    const data = await post("/subject_pass_percentage",{sheet});
 
+    let html = "<table class='table table-bordered'><tr><th>S.No</th><th>Subject</th><th>Pass %</th></tr>";
+    data.forEach((r,i)=>{
+        html += `<tr><td>${i+1}</td><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+    html += "</table>";
+
+    document.getElementById("coursesArrearTable").innerHTML = html;
+}
+
+async function loadDeptDashboard(){
+    const dept = qs("departmentSelect").value;
+    const data = await post("/dept_dashboard",{department:dept});
+
+    let html="<table class='table table-bordered'><tr><th>Batch</th><th>Strength</th></tr>";
+    data.forEach(d=>{
+        html+=`<tr><td>${d.batch}</td><td>${d.strength}</td></tr>`;
+    });
+    html+="</table>";
+
+    qs("studentsResult").innerHTML = html;
+    qs("studentsResultCard").style.display="block";
+}
+
+    
 
 /* =========================================================
    END
