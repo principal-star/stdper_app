@@ -444,6 +444,27 @@
             </div>
         </div>
     </div>
+
+    <div class="btn-group mb-4" role="group">
+        <button class="btn btn-outline-primary" onclick="showNewFeature('f1')">
+            Subject Pass % (Batch)
+        </button>
+        <button class="btn btn-outline-primary" onclick="showNewFeature('f2')">
+            Subject Pass % (Department)
+        </button>
+        <button class="btn btn-outline-primary" onclick="showNewFeature('f3')">
+            Cutoff vs Arrears (Batch)
+        </button>
+        <button class="btn btn-outline-primary" onclick="showNewFeature('f4')">
+            Cutoff vs Arrears (Department)
+        </button>
+        <button class="btn btn-outline-primary" onclick="showNewFeature('f5')">
+            Department Dashboard
+        </button>
+    </div>
+
+
+    
     <table border="1">
       <tr><th>S.No</th><th>Subject Code</th><th>Pass %</th></tr>
       {% for row in pass_data %}
@@ -476,9 +497,50 @@
   </tr>
   {% endfor %}
 </table>
-
+   
+</div>
+/* Correction here*/
+<!-- FEATURE 1 -->
+<div id="feature-f1" class="new-feature" style="display:none;">
+    <h6>Batch-wise Subject Pass %</h6>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>S.No</th>
+                <th>Subject Code</th>
+                <th>Pass %</th>
+            </tr>
+        </thead>
+        <tbody id="f1-body"></tbody>
+    </table>
 </div>
 
+<!-- FEATURE 2 -->
+<div id="feature-f2" class="new-feature" style="display:none;">
+    <h6>Department-wise Subject Pass %</h6>
+    <div id="f2-table"></div>
+</div>
+
+<!-- FEATURE 3 -->
+<div id="feature-f3" class="new-feature" style="display:none;">
+    <h6>Batch-wise Cutoff vs Arrear Distribution</h6>
+    <div id="f3-table"></div>
+</div>
+
+<!-- FEATURE 4 -->
+<div id="feature-f4" class="new-feature" style="display:none;">
+    <h6>Department-wise Cutoff vs Arrear Distribution</h6>
+    <div id="f4-table"></div>
+</div>
+
+<!-- FEATURE 5 -->
+<div id="feature-f5" class="new-feature" style="display:none;">
+    <h6>Department Dashboard</h6>
+    <div id="f5-dashboard"></div>
+</div>
+
+
+    
 <script>
 /* =========================================================
    COMMON HELPERS
@@ -1104,7 +1166,21 @@ async function loadDeptDashboard(){
     qs("studentsResultCard").style.display="block";
 }
 
-    
+/* Correction here*/
+function showNewFeature(featureId) {
+
+    // Hide ONLY new feature blocks
+    document.querySelectorAll(".new-feature").forEach(div => {
+        div.style.display = "none";
+    });
+
+    // Show selected feature
+    const el = document.getElementById("feature-" + featureId);
+    if (el) {
+        el.style.display = "block";
+    }
+}
+
 
 /* =========================================================
    END
