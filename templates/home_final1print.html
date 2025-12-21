@@ -1136,10 +1136,10 @@ async function loadDeptDashboard(){
 }
 
 /* Correction here*/
-function showFeature(key) {
+function showNewFeature(key) {
 
-    // Hide only NEW feature blocks
-    document.querySelectorAll(".feature-box").forEach(div => {
+    // Hide all feature sections
+    document.querySelectorAll(".new-feature").forEach(div => {
         div.style.display = "none";
     });
 
@@ -1150,10 +1150,10 @@ function showFeature(key) {
     }
 }
 
+// Default feature on page load
 document.addEventListener("DOMContentLoaded", () => {
-    showNewFeature("f1"); // default view
+    showNewFeature("f1");
 });
-
 /* =========================================================
    END
 ========================================================= */
