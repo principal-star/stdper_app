@@ -444,6 +444,38 @@
             </div>
         </div>
     </div>
+    <table border="1">
+      <tr><th>S.No</th><th>Subject Code</th><th>Pass %</th></tr>
+      {% for row in pass_data %}
+      <tr>
+        <td>{{ row.sno }}</td>
+        <td>{{ row.subject }}</td>
+        <td>{{ row.pass_percent }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    <table border="1">
+  <tr>
+    <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
+    <th>Hostellers</th><th>Day Scholars</th>
+    <th>FG</th><th>GQ</th><th>MQ</th>
+  </tr>
+
+  {% for batch, data in dashboard.items() %}
+  <tr>
+    <td>{{ batch }}</td>
+    <td>{{ data.strength }}</td>
+    <td>{{ data.boys }}</td>
+    <td>{{ data.girls }}</td>
+    <td>{{ data.hosteller }}</td>
+    <td>{{ data.day_scholar }}</td>
+    <td>{{ data.fg }}</td>
+    <td>{{ data.gq }}</td>
+    <td>{{ data.mq }}</td>
+  </tr>
+  {% endfor %}
+</table>
 
 </div>
 
