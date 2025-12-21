@@ -791,7 +791,7 @@ def download_student_pdf():
         as_attachment=True,
         download_name=f"{student}_performance.pdf"
     )
-
+#app routes for new features are added from here
 @app.route("/students_by_arrears", methods=["POST"])
 def students_by_arrears():
     scope = request.form.get("scope")       # batch / dept
@@ -931,9 +931,140 @@ def autosave_pdf():
         mimetype="application/pdf"
     )
 
+@app.route("/subject_pass_percentage", methods=["POST"])
+def subject_pass_percentage():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    sem_cols = [c for c in df.columns if re.search(r"Sem\d+_.*_\d+", c, re.I)]
+    results = []
+
+    fail_grades = {"U", "RA", "AU", "ABSENT", "F", "FAIL"}
+
+    for col in sem_cols:
+        subject = col.split("_")[1].upper()
+        total = df[col].notna().sum()
+        passed = df[col].apply(
+            lambda x: str(x).strip().upper() not in fail_grades
+        ).sum()
+
+        if total > 0:
+            pass_percent = round((passed / total) * 100, 2)
+            results.append({
+                "subject": subject,
+                "pass_percent": pass_percent
+            })
+
+    return jsonify(results)
+
+@app.route("/dept_subject_pass_percentage", methods=["POST"])
+def dept_subject_pass_percentage():
+    department = request.form.get("department")
+
+    sheets = [s for s in list_sheets() if department in s]
+    output = {}
+
+    fail_grades = {"U", "RA", "AU", "ABSENT", "F", "FAIL"}
+
+    for sh in sheets:
+        df = get_sheet_df(sh)
+        sem_cols = [c for c in df.columns if re.search(r"Sem\d+_.*_\d+", c, re.I)]
+
+        batch_result = {}
+        for col in sem_cols:
+            subject = col.split("_")[1].upper()
+            total = df[col].notna().sum()
+            passed = df[col].apply(
+                lambda x: str(x).strip().upper() not in fail_grades
+            ).sum()
+
+            if total > 0:
+                batch_result[subject] = round((passed / total) * 100, 2)
+
+        output[sh] = batch_result
+
+    return jsonify(output)
+
+@app.route("/cutoff_arrear_batch", methods=["POST"])
+def cutoff_arrear_batch():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    cutoff_col = next(c for c in df.columns if "cut" in c.lower())
+
+    buckets = {
+        "80-100": (80,100),
+        "100-120": (100,120),
+        "120-140": (120,140),
+        "140-160": (140,160),
+        "160-180": (160,180),
+        ">180": (181,1000)
+    }
+
+    result = {}
+
+    for label,(lo,hi) in buckets.items():
+        subset = df[pd.to_numeric(df[cutoff_col], errors="coerce").between(lo,hi)]
+        counts = {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6-10":0,">10":0}
+
+        for _,row in subset.iterrows():
+            arrears = sum(
+                str(v).strip().upper() in ["RA","U","F","FAIL","ABSENT"]
+                for v in row.values
+            )
+            if arrears <= 5:
+                counts[str(arrears)] += 1
+            elif arrears <= 10:
+                counts["6-10"] += 1
+            else:
+                counts[">10"] += 1
+
+        result[label] = counts
+
+    return jsonify(result)
+
+@app.route("/cutoff_arrear_dept", methods=["POST"])
+def cutoff_arrear_dept():
+    department = request.form.get("department")
+    sheets = [s for s in list_sheets() if department in s]
+
+    output = {}
+    for sh in sheets:
+        output[sh] = json.loads(
+            cutoff_arrear_batch().get_data(as_text=True)
+        )
+
+    return jsonify(output)
+
+@app.route("/dept_dashboard", methods=["POST"])
+def dept_dashboard():
+    department = request.form.get("department")
+    sheets = [s for s in list_sheets() if department in s]
+
+    dashboard = []
+
+    for sh in sheets:
+        df = get_sheet_df(sh)
+
+        def count_col(keyword):
+            col = next((c for c in df.columns if keyword in c.lower()), None)
+            return df[col].astype(str).str.upper().value_counts().to_dict() if col else {}
+
+        dashboard.append({
+            "batch": sh,
+            "strength": len(df),
+            "gender": count_col("gender"),
+            "hostel": count_col("hostel"),
+            "fg": count_col("first"),
+            "quota": count_col("gq")
+        })
+
+    return jsonify(dashboard)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
