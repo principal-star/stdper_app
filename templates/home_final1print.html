@@ -272,6 +272,48 @@
 <div class="dashboard-box">
 
     <div class="box-title">📦 BOX 3 — Course Analytics</div>
+    
+    <!-- FEATURE 1 -->
+    <div id="feature-f1" class="new-feature" style="display:none;">
+        <h6>Batch-wise Subject Pass %</h6>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>S.No</th>
+                    <th>Subject Code</th>
+                    <th>Pass %</th>
+                </tr>
+            </thead>
+            <tbody id="f1-body"></tbody>
+        </table>
+    </div>
+
+    <!-- FEATURE 2 -->
+    <div id="feature-f2" class="new-feature" style="display:none;">
+        <h6>Department-wise Subject Pass %</h6>
+        <div id="f2-table"></div>
+    </div>
+
+    <!-- FEATURE 3 -->
+    <div id="feature-f3" class="new-feature" style="display:none;">
+        <h6>Batch-wise Cutoff vs Arrear Distribution</h6>
+        <div id="f3-table"></div>
+    </div>
+
+    <!-- FEATURE 4 -->
+    <div id="feature-f4" class="new-feature" style="display:none;">
+        <h6>Department-wise Cutoff vs Arrear Distribution</h6>
+        <div id="f4-table"></div>
+    </div>
+
+    <!-- FEATURE 5 -->
+    <div id="feature-f5" class="new-feature" style="display:none;">
+        <h6>Department Dashboard</h6>
+        <div id="f5-dashboard"></div>
+    </div>
+
+
+
 
     <!-- Filters -->
     <div class="row g-3 mb-3">
@@ -462,82 +504,9 @@
             Department Dashboard
         </button>
     </div>
-
-
-    
-    <table border="1">
-      <tr><th>S.No</th><th>Subject Code</th><th>Pass %</th></tr>
-      {% for row in pass_data %}
-      <tr>
-        <td>{{ row.sno }}</td>
-        <td>{{ row.subject }}</td>
-        <td>{{ row.pass_percent }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-
-    <table border="1">
-  <tr>
-    <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
-    <th>Hostellers</th><th>Day Scholars</th>
-    <th>FG</th><th>GQ</th><th>MQ</th>
-  </tr>
-
-  {% for batch, data in dashboard.items() %}
-  <tr>
-    <td>{{ batch }}</td>
-    <td>{{ data.strength }}</td>
-    <td>{{ data.boys }}</td>
-    <td>{{ data.girls }}</td>
-    <td>{{ data.hosteller }}</td>
-    <td>{{ data.day_scholar }}</td>
-    <td>{{ data.fg }}</td>
-    <td>{{ data.gq }}</td>
-    <td>{{ data.mq }}</td>
-  </tr>
-  {% endfor %}
-</table>
-   
-</div>
-/* Correction here*/
-<!-- FEATURE 1 -->
-<div id="feature-f1" class="new-feature" style="display:none;">
-    <h6>Batch-wise Subject Pass %</h6>
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>S.No</th>
-                <th>Subject Code</th>
-                <th>Pass %</th>
-            </tr>
-        </thead>
-        <tbody id="f1-body"></tbody>
-    </table>
+ 
 </div>
 
-<!-- FEATURE 2 -->
-<div id="feature-f2" class="new-feature" style="display:none;">
-    <h6>Department-wise Subject Pass %</h6>
-    <div id="f2-table"></div>
-</div>
-
-<!-- FEATURE 3 -->
-<div id="feature-f3" class="new-feature" style="display:none;">
-    <h6>Batch-wise Cutoff vs Arrear Distribution</h6>
-    <div id="f3-table"></div>
-</div>
-
-<!-- FEATURE 4 -->
-<div id="feature-f4" class="new-feature" style="display:none;">
-    <h6>Department-wise Cutoff vs Arrear Distribution</h6>
-    <div id="f4-table"></div>
-</div>
-
-<!-- FEATURE 5 -->
-<div id="feature-f5" class="new-feature" style="display:none;">
-    <h6>Department Dashboard</h6>
-    <div id="f5-dashboard"></div>
-</div>
 
 
     
@@ -1181,7 +1150,9 @@ function showFeature(key) {
     }
 }
 
-
+document.addEventListener("DOMContentLoaded", () => {
+    showNewFeature("f1"); // default view
+});
 
 /* =========================================================
    END
