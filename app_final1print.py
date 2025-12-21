@@ -279,7 +279,9 @@ def test():
 @app.route("/")
 def home():
     sheets = list_sheets()
-    return render_template("home_final1print.html", sheets=sheets, analytics_fields=ANALYTICS_FIELDS)
+    dashboard = {}
+    return render_template("home_final1print.html", sheets=sheets, analytics_fields=ANALYTICS_FIELDS,
+        dashboard=dashboard)
 
 
 @app.route("/refresh_cache", methods=["POST", "GET"])
@@ -1064,6 +1066,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
