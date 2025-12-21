@@ -488,22 +488,23 @@
     </div>
 
     <div class="btn-group mb-4" role="group">
-        <button class="btn btn-outline-primary" onclick="showNewFeature('f1')">
-            Subject Pass % (Batch)
-        </button>
-        <button class="btn btn-outline-primary" onclick="showNewFeature('f2')">
-            Subject Pass % (Department)
-        </button>
-        <button class="btn btn-outline-primary" onclick="showNewFeature('f3')">
-            Cutoff vs Arrears (Batch)
-        </button>
-        <button class="btn btn-outline-primary" onclick="showNewFeature('f4')">
-            Cutoff vs Arrears (Department)
-        </button>
-        <button class="btn btn-outline-primary" onclick="showNewFeature('f5')">
-            Department Dashboard
-        </button>
-    </div>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f1'); loadFeatureF1();">
+        Subject Pass % (Batch)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f2'); loadFeatureF2();">
+        Subject Pass % (Department)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f3'); loadFeatureF3();">
+        Cutoff vs Arrears (Batch)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f4'); loadFeatureF4();">
+        Cutoff vs Arrears (Department)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f5'); loadFeatureF5();">
+        Department Dashboard
+    </button>
+</div>
+
  
 </div>
 
@@ -1154,6 +1155,103 @@ function showNewFeature(key) {
 document.addEventListener("DOMContentLoaded", () => {
     showNewFeature("f1");
 });
+
+async function loadFeatureF1() {
+    const sheet = qs("sheetSelect").value;
+    const tbody = qs("f1-body");
+    tbody.innerHTML = "<tr><td colspan='3'>Loading...</td></tr>";
+
+    const data = await post("/subject_pass_percentage", { sheet });
+
+    tbody.innerHTML = "";
+    data.forEach((r, i) => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${r.subject}</td>
+                <td>${r.pass_percent}</td>
+            </tr>`;
+    });
+}
+async function loadFeatureF2() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f2-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/subject_pass_percentage_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Subject</th><th>Pass %</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF3() {
+    const sheet = qs("sheetSelect").value;
+    const div = qs("f3-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_batch", { sheet });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF4() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f4-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF5() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f5-dashboard");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/dept_dashboard", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr>
+            <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
+            <th>Hostellers</th><th>Day Scholars</th><th>FG</th><th>GQ</th><th>MQ</th>
+        </tr>`;
+
+    data.forEach(d => {
+        html += `
+        <tr>
+            <td>${d.batch}</td><td>${d.strength}</td><td>${d.boys}</td>
+            <td>${d.girls}</td><td>${d.hostellers}</td>
+            <td>${d.day_scholars}</td><td>${d.fg}</td>
+            <td>${d.gq}</td><td>${d.mq}</td>
+        </tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+
+
 /* =========================================================
    END
 ========================================================= */
