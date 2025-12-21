@@ -1167,19 +1167,20 @@ async function loadDeptDashboard(){
 }
 
 /* Correction here*/
-function showNewFeature(featureId) {
+function showFeature(key) {
 
-    // Hide ONLY new feature blocks
-    document.querySelectorAll(".new-feature").forEach(div => {
+    // Hide only NEW feature blocks
+    document.querySelectorAll(".feature-box").forEach(div => {
         div.style.display = "none";
     });
 
     // Show selected feature
-    const el = document.getElementById("feature-" + featureId);
-    if (el) {
-        el.style.display = "block";
+    const target = document.getElementById("feature-" + key);
+    if (target) {
+        target.style.display = "block";
     }
 }
+
 
 
 /* =========================================================
