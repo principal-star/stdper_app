@@ -959,6 +959,25 @@ def subject_pass_percentage():
 
     return jsonify(results)
 
+@app.route("/subject_pass_percentage_dept", methods=["POST"])
+def subject_pass_percentage_dept():
+    dept = request.form["department"]
+    result = {}
+
+    for batch, df in load_all_batches():
+        d = df[df["Department"] == dept]
+
+        for col in subject_columns(d):
+            passed = d[col].isin(["S","A","B","C","D","E"]).sum()
+            total = d[col].notna().sum()
+            result[col] = round(passed * 100 / total, 2) if total else 0
+
+    return jsonify([
+        {"subject": k, "pass_percent": v}
+        for k, v in result.items()
+    ])
+
+"""
 @app.route("/dept_subject_pass_percentage", methods=["POST"])
 def dept_subject_pass_percentage():
     department = request.form.get("department")
@@ -986,7 +1005,30 @@ def dept_subject_pass_percentage():
         output[sh] = batch_result
 
     return jsonify(output)
+"""
 
+@app.route("/cutoff_vs_arrears_batch", methods=["POST"])
+def cutoff_vs_arrears_batch():
+    sheet = request.form["sheet"]
+    df = load_sheet(sheet)
+
+    buckets = {"<150":0, "150-175":0, "175-200":0, ">200":0}
+
+    for _, r in df.iterrows():
+        arrears = r["Arrears"]
+        cutoff = r["Cutoff"]
+
+        if arrears > 0:
+            if cutoff < 150: buckets["<150"] += 1
+            elif cutoff <= 175: buckets["150-175"] += 1
+            elif cutoff <= 200: buckets["175-200"] += 1
+            else: buckets[">200"] += 1
+
+    return jsonify([
+        {"cutoff": k, "count": v} for k,v in buckets.items()
+    ])
+
+"""
 @app.route("/cutoff_arrear_batch", methods=["POST"])
 def cutoff_arrear_batch():
     sheet = request.form.get("sheet")
@@ -1024,7 +1066,28 @@ def cutoff_arrear_batch():
         result[label] = counts
 
     return jsonify(result)
+"""
+@app.route("/cutoff_vs_arrears_dept", methods=["POST"])
+def cutoff_vs_arrears_dept():
+    dept = request.form["department"]
+    buckets = {"<150":0, "150-175":0, "175-200":0, ">200":0}
 
+    for _, df in load_all_batches():
+        d = df[df["Department"] == dept]
+
+        for _, r in d.iterrows():
+            if r["Arrears"] > 0:
+                c = r["Cutoff"]
+                if c < 150: buckets["<150"] += 1
+                elif c <= 175: buckets["150-175"] += 1
+                elif c <= 200: buckets["175-200"] += 1
+                else: buckets[">200"] += 1
+
+    return jsonify([
+        {"cutoff": k, "count": v} for k,v in buckets.items()
+    ])
+
+"""
 @app.route("/cutoff_arrear_dept", methods=["POST"])
 def cutoff_arrear_dept():
     department = request.form.get("department")
@@ -1037,7 +1100,31 @@ def cutoff_arrear_dept():
         )
 
     return jsonify(output)
+"""
+@app.route("/dept_dashboard", methods=["POST"])
+def dept_dashboard():
+    dept = request.form.get("department")
 
+    dashboard = []
+
+    for batch, df in load_all_batches():  # your existing loader
+        d = df[df["Department"] == dept]
+
+        dashboard.append({
+            "batch": batch,
+            "strength": len(d),
+            "boys": int((d["Gender"] == "M").sum()),
+            "girls": int((d["Gender"] == "F").sum()),
+            "hostellers": int((d["Hostel"] == "Yes").sum()),
+            "day_scholars": int((d["Hostel"] == "No").sum()),
+            "fg": int((d["Quota"] == "FG").sum()),
+            "gq": int((d["Quota"] == "GQ").sum()),
+            "mq": int((d["Quota"] == "MQ").sum())
+        })
+
+    return jsonify(dashboard)
+
+"""
 @app.route("/dept_dashboard", methods=["POST"])
 def dept_dashboard():
     department = request.form.get("department")
@@ -1062,11 +1149,10 @@ def dept_dashboard():
         })
 
     return jsonify(dashboard)
-
+"""
 
 if __name__ == "__main__":
     app.run(debug=True)
-
 
 
 
