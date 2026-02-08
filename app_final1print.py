@@ -86,8 +86,19 @@ GRADE_POINT_MAP = {
     "O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6,
     "RA": 5, "U": 5, "FAIL": 5, "F": 5, "ABSENT": 5
 }
+def convert_drive_link(url):
+    if not url or not isinstance(url, str):
+        return None
+
+    match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+    if not match:
+        return None
+
+    file_id = match.group(1)
+    return f"https://drive.google.com/uc?export=view&id={file_id}"
 
 
+"""
 def convert_drive_link(url: str):
     """Convert Google Drive link or HYPERLINK formula into direct view URL."""
     if not url:
@@ -113,7 +124,7 @@ def convert_drive_link(url: str):
     if "uc?export=view" in s:
         return s
     return s
-
+"""
 """
 
 def load_sheet_to_cache(sheet_title: str):
@@ -348,7 +359,26 @@ def student_details():
 
     row = df_copy[mask].iloc[0].drop(labels="__match__")
     student_data = row.to_dict()
+    # -------------------------------
+    # Semester-wise subject grouping
+    # -------------------------------
+    semester_subjects = {}
+    
+    for col, val in student_data.items():
+        m = re.search(r"(sem\d+)_([A-Za-z0-9]+)_\d+", str(col).lower())
+        if not m:
+            continue
+    
+        sem = m.group(1).upper()       # SEM1, SEM2, ...
+        subject = m.group(2).upper()   # MA101, CS204, etc
+        grade = str(val).strip().upper()
+    
+        semester_subjects.setdefault(sem, []).append({
+            "subject": subject,
+            "grade": grade
+        })
 
+    
     # photo detection & conversion
     photo_url = None
     for col in df.columns:
@@ -448,6 +478,7 @@ def student_details():
         "class_size": class_size,
         "sem_gpa_labels": sem_gpa_labels,
         "sem_gpa_values": sem_gpa_values,
+        "semester_subjects": semester_subjects,
         "sem_rank_values": sem_rank_values
     }
 
@@ -1153,6 +1184,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
