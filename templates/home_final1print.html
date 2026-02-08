@@ -152,7 +152,7 @@
                 <canvas id="semArrearLineChart"></canvas>
             </div>
         </div>
-
+        <div class="row mt-4" id="semesterGrid"></div>
         <div class="row g-4 mt-4">
             <div class="col-md-6">
                 <h6 class="fw-bold">Semester GPA Trend</h6>
@@ -515,6 +515,16 @@
 /* =========================================================
    COMMON HELPERS
 ========================================================= */
+const SEM_COLORS = {
+    SEM1: "#e3f2fd",
+    SEM2: "#e8f5e9",
+    SEM3: "#fff3e0",
+    SEM4: "#fce4ec",
+    SEM5: "#ede7f6",
+    SEM6: "#e0f7fa",
+    SEM7: "#f1f8e9",
+    SEM8: "#fbe9e7"
+};
 
 const API = {
     students: "/students",
@@ -612,6 +622,8 @@ document.addEventListener("DOMContentLoaded", () => {
     //document.getElementById("sheetSelect").addEventListener("change", loadStudents);
     document.getElementById("sheetSelect").addEventListener("change", () => {
     loadStudents();
+    renderSemesterGrid(data.semester_subjects);
+    
     loadSubjectCodes();
     });
     // Initial load
@@ -1249,6 +1261,36 @@ async function loadFeatureF5() {
 
     html += "</table>";
     div.innerHTML = html;
+}
+function renderSemesterGrid(semesterSubjects) {
+    const grid = document.getElementById("semesterGrid");
+    grid.innerHTML = "";
+
+    const semesters = Object.keys(semesterSubjects).sort();
+
+    semesters.forEach((sem, index) => {
+
+        const col = document.createElement("div");
+        col.className = "col-md-3 mb-3";
+        col.style.background = SEM_COLORS[sem] || "#f5f5f5";
+        col.style.borderRadius = "8px";
+        col.style.padding = "10px";
+
+        let html = `<h6 class="fw-bold text-center">${sem}</h6>`;
+        html += `<table class="table table-sm table-bordered">`;
+
+        semesterSubjects[sem].forEach(s => {
+            html += `<tr>
+                        <td>${s.subject}</td>
+                        <td class="fw-bold">${s.grade}</td>
+                     </tr>`;
+        });
+
+        html += "</table>";
+        col.innerHTML = html;
+
+        grid.appendChild(col);
+    });
 }
 
 
