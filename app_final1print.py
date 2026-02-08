@@ -601,6 +601,46 @@ def analytics_data():
     # Categorical -> value counts
     counts = series.astype(str).str.strip().value_counts()
     return jsonify({"labels": counts.index.tolist(), "values": counts.values.tolist(), "chart_type": "bar"})
+@app.route("/academic_performance", methods=["POST"])
+def academic_performance():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    name_col = next(c for c in df.columns if "name" in c.lower())
+    cutoff_col = next(c for c in df.columns if "cut" in c.lower())
+
+    sem_cols = [c for c in df.columns if re.search(r"Sem\d+_.*_\d+", c, re.I)]
+    arrear_grades = {"RA","U","UA","F","FAIL","ABSENT"}
+
+    high_cutoff = []
+    low_cutoff = []
+
+    for _, row in df.iterrows():
+        name = str(row[name_col]).strip()
+        cutoff = float(row.get(cutoff_col, 0) or 0)
+
+        arrears = []
+        for c in sem_cols:
+            if str(row[c]).strip().upper() in arrear_grades:
+                arrears.append(c.split("_")[1])
+
+        if cutoff >= 140 and arrears:
+            high_cutoff.append({
+                "name": name,
+                "cutoff": cutoff,
+                "arrears": arrears
+            })
+
+        if cutoff < 140 and not arrears:
+            low_cutoff.append({
+                "name": name,
+                "cutoff": cutoff
+            })
+
+    return jsonify({
+        "high": high_cutoff,
+        "low": low_cutoff
+    })
 
 
 @app.route("/batch_arrear_status", methods=["POST"])
@@ -1240,6 +1280,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
