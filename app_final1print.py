@@ -420,11 +420,11 @@ def student_details():
     
         sem = m.group(1).upper()   # SEM1, SEM2...
         subject = m.group(2).upper()
-        grade = str(val).strip().upper()
+        grades = str(val).strip().upper()
     
         semester_results.setdefault(sem, []).append({
             "subject": subject,
-            "grade": grade
+            "grade": grades
         })
 
     # semester arrears
@@ -1213,6 +1213,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
