@@ -100,7 +100,7 @@ def convert_drive_link(url):
 
 """
 def convert_drive_link(url: str):
-    """Convert Google Drive link or HYPERLINK formula into direct view URL."""
+    
     if not url:
         return None
     s = str(url).strip()
@@ -1184,6 +1184,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
