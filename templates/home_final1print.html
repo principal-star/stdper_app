@@ -810,6 +810,39 @@ async function loadStudent(){
         data.sem_gpa_labels,
         data.sem_rank_values,true
     );
+    // -------------------------------
+    // SEMESTER-WISE ACADEMIC DISPLAY
+    // -------------------------------
+    const semBox = qs("semesterResults");
+    semBox.innerHTML = "";
+    
+    const semData = data.semester_subjects || {};
+    
+    Object.keys(semData).sort().forEach(sem => {
+    
+        let html = `
+            <div class="col-md-3">
+                <div class="p-2 rounded" style="background:${SEM_COLORS[sem] || '#f8f9fa'}">
+                    <h6 class="fw-bold">${sem}</h6>
+                    <ul class="list-group list-group-flush">
+        `;
+    
+        semData[sem].forEach(s => {
+            html += `
+                <li class="list-group-item d-flex justify-content-between">
+                    ${s.subject}
+                    <span class="badge bg-dark">${s.grade}</span>
+                </li>`;
+        });
+    
+        html += `
+                    </ul>
+                </div>
+            </div>`;
+    
+        semBox.innerHTML += html;
+    });
+
     renderSemesterResults(data.semester_results, data.semester_colors);
 
 }
