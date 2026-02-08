@@ -369,6 +369,28 @@ def student_details():
 
     row = df_copy[mask].iloc[0].drop(labels="__match__")
     student_data = row.to_dict()
+    # -------------------------------
+    # SEMESTER-WISE SUBJECT GROUPING
+    # -------------------------------
+    semester_subjects = {}
+    
+    sem_pattern = re.compile(r"(sem\d+)_([a-z0-9]+)_\d+", re.I)
+    
+    for col, val in student_data.items():
+        m = sem_pattern.search(str(col))
+        if not m:
+            continue
+    
+        sem = m.group(1).upper()   # SEM1, SEM2...
+        subject = m.group(2).upper()
+        grade = str(val).strip().upper()
+    
+        semester_subjects.setdefault(sem, []).append({
+            "subject": subject,
+            "grade": grade
+        })
+
+    
     # ---------- SEMESTER-WISE RESULT STRUCTURE ----------
     semester_results = {}
     
@@ -1280,6 +1302,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
