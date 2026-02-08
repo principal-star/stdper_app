@@ -67,6 +67,16 @@ SHEET_CACHE = {}
 CACHE_LOCK = threading.Lock()
 CACHE_TTL = 60 * 60 * 6  # optional TTL: 6 hours (not auto-enforced here, endpoint to refresh provided)
 
+SEM_COLORS = {
+    "SEM1": "#e3f2fd",
+    "SEM2": "#e8f5e9",
+    "SEM3": "#fff3e0",
+    "SEM4": "#fce4ec",
+    "SEM5": "#ede7f6",
+    "SEM6": "#e0f7fa",
+    "SEM7": "#f1f8e9",
+    "SEM8": "#fbe9e7"
+}
 
 # Analytics dropdown fields (same as in frontend)
 ANALYTICS_FIELDS = [
@@ -392,12 +402,30 @@ def student_details():
     arrears_count = sum(1 for v in student_data.values() if str(v).strip().upper() in arrear_keywords)
 
     # grade distribution (only semester subject columns)
+    """
     grades = {}
     for k, v in student_data.items():
         if re.search(r"(sem\d+)_.*_(\d+)$", str(k).lower()):
             g = str(v).strip().upper()
             if g in GRADE_POINT_MAP:
                 grades[g] = grades.get(g, 0) + 1
+    """
+    # semester-wise subjects and grades
+    semester_results = {}
+    
+    for col, val in student_data.items():
+        m = re.search(r"(sem\d+)_([A-Za-z0-9]+)", str(col), re.IGNORECASE)
+        if not m:
+            continue
+    
+        sem = m.group(1).upper()   # SEM1, SEM2...
+        subject = m.group(2).upper()
+        grade = str(val).strip().upper()
+    
+        semester_results.setdefault(sem, []).append({
+            "subject": subject,
+            "grade": grade
+        })
 
     # semester arrears
     sem_arrears_labels, sem_arrears_values = compute_semester_arrears_from_row(student_data)
@@ -479,6 +507,7 @@ def student_details():
         "sem_gpa_labels": sem_gpa_labels,
         "sem_gpa_values": sem_gpa_values,
         "semester_subjects": semester_subjects,
+        "semester_colors": SEM_COLORS,
         "sem_rank_values": sem_rank_values
     }
 
@@ -1184,6 +1213,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
