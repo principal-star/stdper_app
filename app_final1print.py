@@ -402,14 +402,14 @@ def student_details():
     arrears_count = sum(1 for v in student_data.values() if str(v).strip().upper() in arrear_keywords)
 
     # grade distribution (only semester subject columns)
-    """
+    
     grades = {}
     for k, v in student_data.items():
         if re.search(r"(sem\d+)_.*_(\d+)$", str(k).lower()):
             g = str(v).strip().upper()
             if g in GRADE_POINT_MAP:
                 grades[g] = grades.get(g, 0) + 1
-    """
+    
     # semester-wise subjects and grades
     semester_results = {}
     
@@ -420,11 +420,11 @@ def student_details():
     
         sem = m.group(1).upper()   # SEM1, SEM2...
         subject = m.group(2).upper()
-        grades = str(val).strip().upper()
+        grade = str(val).strip().upper()
     
         semester_results.setdefault(sem, []).append({
             "subject": subject,
-            "grade": grades
+            "grade": grade
         })
 
     # semester arrears
@@ -1213,6 +1213,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
