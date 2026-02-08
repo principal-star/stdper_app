@@ -62,6 +62,13 @@
             transform: rotate(-30deg);
             z-index: -1;
         }
+        #academicDetails h6 {
+            margin-bottom: 10px;
+        }
+        
+        #academicDetails .badge {
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 
@@ -191,7 +198,7 @@
          <div class="col-md-4">
             <div class="card detail-card">
                 <div class="card-header">Academic Details</div>
-                <ul class="list-group list-group-flush" id="academicDetails"></ul>
+                <div id="academicDetails"></div>
             </div>
         </div>
         
@@ -715,7 +722,35 @@ async function loadStudent(){
     }
     fill(qs("personalDetails"),data.sections.personal);
     fill(qs("parentDetails"),data.sections.parent);
-    fill(qs("academicDetails"),data.sections.academic);
+    //fill(qs("academicDetails"),data.sections.academic);
+    // ---------- SEMESTER-WISE ACADEMIC DETAILS ----------
+    const acadDiv = qs("academicDetails");
+    acadDiv.innerHTML = "";
+    
+    const semResults = data.semester_results || {};
+    const semColors = data.semester_colors || {};
+    
+    Object.keys(semResults).sort().forEach(sem => {
+    
+        const semBlock = document.createElement("div");
+        semBlock.className = "mb-3 p-3 rounded";
+        semBlock.style.backgroundColor = semColors[sem] || "#f8f9fa";
+    
+        semBlock.innerHTML = `<h6 class="fw-bold">${sem}</h6>`;
+    
+        semResults[sem].forEach(item => {
+            semBlock.innerHTML += `
+                <div class="d-flex justify-content-between border-bottom py-1">
+                    <span>${item.subject}</span>
+                    <span class="badge bg-dark">${item.grade}</span>
+                </div>
+            `;
+        });
+
+        acadDiv.appendChild(semBlock);
+    });
+
+    
     fill(qs("otherDetails"),data.sections.other);
 
     renderChart("gradeChart","bar",
