@@ -69,6 +69,26 @@
         #academicDetails .badge {
             font-size: 0.9rem;
         }
+        .sem-box {
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 14px;
+        }
+        
+        .sem-title {
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+        
+        .grade-badge {
+            float: right;
+            background: #212529;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
     </style>
 </head>
 
@@ -195,12 +215,13 @@
            
         </div>
         
-         <div class="col-md-4">
-            <div class="card detail-card">
-                <div class="card-header">Academic Details</div>
-                <div id="academicDetails"></div>
+        <div class="card detail-card mt-3">
+            <div class="card-header">Academic Details</div>
+            <div class="card-body">
+                <div id="semesterResults" class="row g-3"></div>
             </div>
         </div>
+
         
         <div class="card detail-card mt-4">
             <div class="card-header">Semester-wise Results</div>
@@ -226,6 +247,7 @@
                 {% for f in analytics_fields %}
                 <option value="{{ f }}">{{ f }}</option>
                 {% endfor %}
+                <option value="Academic Performance">Academic Performance</option>
             </select>
         </div>
 
@@ -254,6 +276,17 @@
         <div class="col-md-6">
             <h6 class="fw-bold">Arrear Status Distribution</h6>
             <canvas id="batchArrearChart"></canvas>
+        </div>
+    </div>
+    <div class="row mt-4" id="academicPerformanceBox" style="display:none;">
+        <div class="col-md-6">
+            <h6 class="text-danger fw-bold">High Cut-off with Arrears (≥140)</h6>
+            <div id="highCutoffBox"></div>
+        </div>
+    
+        <div class="col-md-6">
+            <h6 class="text-success fw-bold">Low Cut-off – Zero Arrears (&lt;140)</h6>
+            <div id="lowCutoffBox"></div>
         </div>
     </div>
 
@@ -777,6 +810,35 @@ async function loadStudent(){
         data.sem_gpa_labels,
         data.sem_rank_values,true
     );
+    renderSemesterResults(data.semester_results, data.semester_colors);
+
+}
+function renderSemesterResults(semResults, semColors) {
+    const container = qs("semesterResults");
+    container.innerHTML = "";
+
+    Object.keys(semResults).sort().forEach(sem => {
+        const col = document.createElement("div");
+        col.className = "col-md-3";
+
+        let html = `
+            <div class="sem-box" style="background:${semColors[sem] || '#f8f9fa'}">
+                <div class="sem-title">${sem}</div>
+        `;
+
+        semResults[sem].forEach(r => {
+            html += `
+                <div>
+                    ${r.subject}
+                    <span class="grade-badge">${r.grade}</span>
+                </div>
+            `;
+        });
+
+        html += "</div>";
+        col.innerHTML = html;
+        container.appendChild(col);
+    });
 }
 
 function renderChart(id,type,labels,values,intY=false){
@@ -804,36 +866,113 @@ qs("pdfStudentBtn").onclick=()=>{
 
 let analyticsChart, arrearChart;
 
-qs("btnAnalytics").onclick=async()=>{
-    const sheet=qs("sheetSelect").value;
-    const col=qs("analyticsField").value;
-    const d=await post(API.analytics,{sheet,column:col});
-    if(analyticsChart) analyticsChart.destroy();
-    analyticsChart=new Chart(qs("analyticsChart"),{
-        type:"bar",
-        data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:colors(d.labels.length)}]},
-        options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
+qs("btnAnalytics").onclick = async () => {
+
+    const sheet = qs("sheetSelect").value;
+    const field = qs("analyticsField").value;
+
+    /* =====================================================
+       NEW : ACADEMIC PERFORMANCE ANALYTICS
+    ===================================================== */
+    if (field === "Academic Performance") {
+
+        const data = await post("/academic_performance", { sheet });
+
+        // Hide normal analytics charts
+        qs("analyticsChart").parentElement.style.display = "none";
+        qs("batchArrearChart").parentElement.style.display = "none";
+
+        // Show academic performance container
+        qs("academicPerformanceBox").style.display = "flex";
+
+        qs("highCutoffBox").innerHTML = "";
+        qs("lowCutoffBox").innerHTML = "";
+
+        // LEFT SIDE: Cutoff >= 140 with arrears
+        data.high.forEach(s => {
+            qs("highCutoffBox").innerHTML += `
+                <div class="alert alert-danger shadow-sm">
+                    <b>${s.name}</b> (${s.cutoff})<br>
+                    <span class="badge bg-dark">
+                        Arrears: ${s.arrears.join(", ")}
+                    </span>
+                </div>
+            `;
+        });
+
+        // RIGHT SIDE: Cutoff < 140 with zero arrears
+        data.low.forEach(s => {
+            qs("lowCutoffBox").innerHTML += `
+                <div class="alert alert-success shadow-sm">
+                    <b>${s.name}</b> (${s.cutoff})
+                </div>
+            `;
+        });
+
+        return; // ⛔ stop normal analytics execution
+    }
+
+    /* =====================================================
+       EXISTING ANALYTICS (UNCHANGED)
+    ===================================================== */
+
+    // Ensure charts are visible
+    qs("analyticsChart").parentElement.style.display = "block";
+    qs("batchArrearChart").parentElement.style.display = "block";
+    qs("academicPerformanceBox").style.display = "none";
+
+    const d = await post(API.analytics, { sheet, column: field });
+
+    if (analyticsChart) analyticsChart.destroy();
+    analyticsChart = new Chart(qs("analyticsChart"), {
+        type: "bar",
+        data: {
+            labels: d.labels,
+            datasets: [{
+                data: d.values,
+                backgroundColor: colors(d.labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
     });
 
-    const a=await post(API.arrearStatus,{sheet});
-    if(arrearChart) arrearChart.destroy();
-    arrearChart=new Chart(qs("batchArrearChart"),{
-        type:"bar",
-        data:{labels:a.labels,datasets:[{data:a.values,backgroundColor:colors(a.labels.length)}]},
-        options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
+    const a = await post(API.arrearStatus, { sheet });
+
+    if (arrearChart) arrearChart.destroy();
+    arrearChart = new Chart(qs("batchArrearChart"), {
+        type: "bar",
+        data: {
+            labels: a.labels,
+            datasets: [{
+                data: a.values,
+                backgroundColor: colors(a.labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
     });
 
-    const tb=await post(API.topBottom,{sheet});
-    fillList("topStudentsList",tb.top,"cgpa");
-    fillList("belowStudentsList",tb.bottom,"arrears");
+    const tb = await post(API.topBottom, { sheet });
+    fillList("topStudentsList", tb.top, "cgpa");
+    fillList("belowStudentsList", tb.bottom, "arrears");
 };
 
-function fillList(id,list,key){
+function fillList(id, list, key) {
     clear(qs(id));
-    list.forEach(x=>{
-        qs(id).innerHTML+=`<li class="list-group-item">${x.name} ${badge(x[key])}</li>`;
+    list.forEach(x => {
+        qs(id).innerHTML += `
+            <li class="list-group-item d-flex justify-content-between">
+                ${x.name}
+                ${badge(x[key])}
+            </li>`;
     });
 }
+
 
 /* =========================================================
    BOX-3 — COURSE ANALYTICS
