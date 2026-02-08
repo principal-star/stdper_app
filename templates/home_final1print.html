@@ -181,12 +181,17 @@
                 </div>
             </div>
 
-            <div class="col-md-4">
-                <div class="card detail-card">
-                    <div class="card-header">Academic Details</div>
-                    <ul class="list-group list-group-flush" id="academicDetails"></ul>
-                </div>
+           
+        </div>
+         <div class="col-md-4">
+            <div class="card detail-card">
+                <div class="card-header">Academic Details</div>
+                <ul class="list-group list-group-flush" id="academicDetails"></ul>
             </div>
+        </div>
+        <div class="card detail-card mt-4">
+            <div class="card-header">Semester-wise Results</div>
+            <div class="card-body" id="semesterTable"></div>
         </div>
 
         <div class="card detail-card mt-3">
@@ -623,7 +628,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("sheetSelect").addEventListener("change", () => {
     loadStudents();
     renderSemesterGrid(data.semester_subjects);
-    
+    renderSemesterTable(data);
     loadSubjectCodes();
     });
     // Initial load
@@ -690,10 +695,14 @@ async function loadStudent(){
     qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
     qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
 
-    if(data.photo_url){
-        qs("studentPhoto").src=data.photo_url;
-        qs("photoLink").href=data.photo_url;
+    if (data.photo_url) {
+        qs("studentPhoto").src = data.photo_url;
+        qs("photoLink").href = data.photo_url;
+        qs("studentPhoto").style.display = "block";
+    } else {
+        qs("studentPhoto").style.display = "none";
     }
+
 
     function fill(list,obj){
         clear(list);
@@ -1291,6 +1300,35 @@ function renderSemesterGrid(semesterSubjects) {
 
         grid.appendChild(col);
     });
+}
+function renderSemesterTable(data) {
+
+    const container = qs("semesterTable");
+    container.innerHTML = "";
+
+    const semesters = Object.keys(data.semester_results).sort();
+
+    let html = "<table class='table table-bordered'><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<th style="background:${color}">${sem}</th>`;
+    });
+    html += "</tr><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<td style="background:${color}">`;
+
+        data.semester_results[sem].forEach(r => {
+            html += `<div><b>${r.subject}</b> : ${r.grade}</div>`;
+        });
+
+        html += "</td>";
+    });
+
+    html += "</tr></table>";
+    container.innerHTML = html;
 }
 
 
