@@ -1,1261 +1,1155 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Student Performance Dashboard</title>
+import json
+from flask import Flask, render_template, request, jsonify, send_file
+import gspread
+import pandas as pd
+import re
+#from oauth2client.service_account import ServiceAccountCredentials
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+import threading
+import time
+from gspread.exceptions import APIError
+from playwright.sync_api import sync_playwright
 
-    <!-- Bootstrap -->
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+from flask import Flask, render_template
+from flask import send_file
 
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+import pdfkit
+from google.oauth2.service_account import Credentials
+import tempfile
+import os
+from flask import request, send_file
+from playwright.sync_api import sync_playwright
+import tempfile
+import os
+app = Flask(__name__)
+"""
+@app.route("/")
+def home():
+    #return render_template("home_final1print.html")
+    return render_template("home_final1print.html", sheets=sheets, analytics_fields=ANALYTICS_FIELDS)
+"""
+if __name__ == "__main__":
+    app.run()
 
-    <!-- PDF & Canvas -->
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+# ---------------- GOOGLE SHEET CONFIG ---------------- #
 
-    <style>
-        body {
-            background-color: #f7f7f7;
-        }
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1QbsOeLrqJd6w6Wn-3ycnjyEtiXHONWFnhnpU_NIIhp4/edit?gid=1755838128#gid=1755838128"
+#SHEET_URL = "https://docs.google.com/spreadsheets/d/1Gk0W2XfdCAZ3MmsZcPqhsa0h6AktkF71SSNEfThRjGM/edit?gid=0#gid=0"
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
-        .box-title {
-            font-weight: bold;
-            color: #0d6efd;
-            margin-bottom: 15px;
-        }
+#creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
 
-        .dashboard-box {
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-            padding: 20px;
-            margin-bottom: 25px;
-        }
 
-        #studentPhoto {
-            width: 160px;
-            height: 160px;
-            object-fit: cover;
-            border-radius: 50%;
-            border: 4px solid #dee2e6;
-        }
 
-        .detail-card {
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-        }
 
-        .detail-card .card-header {
-            font-weight: bold;
-            background-color: #6c757d;
-            color: #fff;
-        }
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
-        .watermark {
-            position: fixed;
-            top: 40%;
-            left: 20%;
-            font-size: 80px;
-            color: rgba(200,200,200,0.15);
-            transform: rotate(-30deg);
-            z-index: -1;
-        }
-    </style>
-</head>
+creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 
-<body class="p-4">
+#client = gspread.authorize(creds)
 
-<div class="watermark">SRM TRP ENGINEERING COLLEGE</div>
 
-<h3 class="fw-bold text-primary mb-4">📊 Student Performance Management System</h3>
+client = gspread.authorize(creds)
+workbook = client.open_by_url(SHEET_URL)
 
-<!-- =========================================================
-     📦 BOX 1 — STUDENT SEARCH & DETAILS
-========================================================= -->
-<div class="dashboard-box">
+# ---------------- In-memory cache ---------------- #
+# cache structure: { sheet_title: { 'df': pandas.DataFrame, 'loaded_at': timestamp } }
+SHEET_CACHE = {}
+CACHE_LOCK = threading.Lock()
+CACHE_TTL = 60 * 60 * 6  # optional TTL: 6 hours (not auto-enforced here, endpoint to refresh provided)
 
-    <div class="box-title">📦 BOX 1 — Student Search & Details</div>
 
-    <!-- Selection Row -->
-    <div class="row g-3 mb-3">
-        <div class="col-md-4">
-            <label class="fw-bold">Select Batch / Sheet</label>
-            <select id="sheetSelect" class="form-select">
-                {% for s in sheets %}
-                <option value="{{ s }}">{{ s }}</option>
-                {% endfor %}
-            </select>
-        </div>
+# Analytics dropdown fields (same as in frontend)
+ANALYTICS_FIELDS = [
+    "Gender",
+    "HSC Marks",
+    "Cut off",
+    "First Graduate (Y/N)",
+    "GQ/MQ",
+    "Hosteller/Dayscholar/Outsiders",
+    "Native district",
+    "Belongs to 7.5"
+]
 
-        <div class="col-md-4">
-            <label class="fw-bold">Search Student</label>
-            <input id="studentSearch" type="text" class="form-control"
-                   placeholder="Type student name...">
-        </div>
+# ---------------- Utility functions ---------------- #
 
-        <div class="col-md-4">
-            <label class="fw-bold">Select Student</label>
-            <select id="studentSelect" class="form-select"></select>
-        </div>
-    </div>
+GRADE_POINT_MAP = {
+    "O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6,
+    "RA": 5, "U": 5, "FAIL": 5, "F": 5, "ABSENT": 5
+}
 
-    <button class="btn btn-primary mb-4" onclick="loadStudent()">
-        Load Student Details
-    </button>
 
-    <!-- Student Card -->
-    <div id="studentCard" style="display:none;">
+def convert_drive_link(url: str):
+    """Convert Google Drive link or HYPERLINK formula into direct view URL."""
+    if not url:
+        return None
+    s = str(url).strip()
+    # Remove angle brackets and whitespace
+    s = s.strip("<>").strip()
+    # If it's a HYPERLINK formula, extract first argument
+    m = re.search(r'HYPERLINK\("([^"]+)"', s, re.IGNORECASE)
+    if m:
+        s = m.group(1).strip("<>").strip()
+    # If /d/FILEID/ pattern
+    m = re.search(r"/d/([a-zA-Z0-9_-]+)", s)
+    if m:
+        file_id = m.group(1)
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
+    # If id=FILEID parameter
+    m = re.search(r"id=([a-zA-Z0-9_-]+)", s)
+    if m:
+        file_id = m.group(1)
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
+    # Already uc?export=view
+    if "uc?export=view" in s:
+        return s
+    return s
 
-        <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-md-3 text-center">
-                <a id="photoLink" target="_blank">
-                    <img id="studentPhoto" src="">
-                </a>
-            </div>
+"""
 
-            <div class="col-md-9">
-                <h4 id="studName" class="fw-bold"></h4>
-                <p>
-                    <strong>Total Arrears:</strong>
-                    <span id="arrears"></span>
-                </p>
+def load_sheet_to_cache(sheet_title: str):
+        with CACHE_LOCK:
+        try:
+            ws = workbook.worksheet(sheet_title)
+            values = ws.get_all_values()
 
-                <span class="badge bg-info me-2" id="cgpaBadge">CGPA: --</span>
-                <span class="badge bg-warning text-dark" id="rankBadge">Rank: --</span>
+            if not values or len(values) < 2:
+                df = pd.DataFrame()
+            else:
+                raw_headers = values[0]
 
-                <div class="mt-3">
-                    <button id="pdfStudentBtn"
-                            class="btn btn-danger btn-sm">
-                        📄 Download Student Performance PDF
-                    </button>
-                </div>
-            </div>
-        </div>
+                # Fix empty / duplicate headers
+                headers = []
+                seen = {}
 
-        <!-- Charts -->
-        <div class="row g-4">
-            <div class="col-md-4">
-                <h6 class="fw-bold">Grade Distribution</h6>
-                <canvas id="gradeChart"></canvas>
-            </div>
+                for i, h in enumerate(raw_headers):
+                    h = h.strip() if h else f"Unnamed_{i}"
+                    if h in seen:
+                        seen[h] += 1
+                        h = f"{h}_{seen[h]}"
+                    else:
+                        seen[h] = 0
+                    headers.append(h)
 
-            <div class="col-md-4">
-                <h6 class="fw-bold">Arrears per Semester</h6>
-                <canvas id="semArrearBarChart"></canvas>
-            </div>
+                df = pd.DataFrame(values[1:], columns=headers)
 
-            <div class="col-md-4">
-                <h6 class="fw-bold">Arrears Trend</h6>
-                <canvas id="semArrearLineChart"></canvas>
-            </div>
-        </div>
+            
+            records = ws.get_all_records()
+            df = pd.DataFrame(records)
+            
+            
+            # Normalize column names to str
+            df.columns = [str(c) for c in df.columns]
+            SHEET_CACHE[sheet_title] = {"df": df, "loaded_at": time.time()}
+            return SHEET_CACHE[sheet_title]
+        except APIError as e:
+            # re-raise to caller
+            raise
+"""
+def load_sheet_to_cache(sheet_title):
+    global SHEET_CACHE
 
-        <div class="row g-4 mt-4">
-            <div class="col-md-6">
-                <h6 class="fw-bold">Semester GPA Trend</h6>
-                <canvas id="gpaTrendChart"></canvas>
-            </div>
+    if sheet_title in SHEET_CACHE:
+        return SHEET_CACHE[sheet_title]
 
-            <div class="col-md-6">
-                <h6 class="fw-bold">Semester Rank Trend</h6>
-                <canvas id="rankTrendChart"></canvas>
-            </div>
-        </div>
+    ws = workbook.worksheet(sheet_title)
 
-        <!-- Details -->
-        <div class="row g-3 mt-4">
-            <div class="col-md-4">
-                <div class="card detail-card">
-                    <div class="card-header">Personal Details</div>
-                    <ul class="list-group list-group-flush" id="personalDetails"></ul>
-                </div>
-            </div>
+    values = ws.get_all_values()
 
-            <div class="col-md-4">
-                <div class="card detail-card">
-                    <div class="card-header">Parent Details</div>
-                    <ul class="list-group list-group-flush" id="parentDetails"></ul>
-                </div>
-            </div>
+    if not values or len(values) < 2:
+        df = pd.DataFrame()
+    else:
+        raw_headers = values[0]
 
-            <div class="col-md-4">
-                <div class="card detail-card">
-                    <div class="card-header">Academic Details</div>
-                    <ul class="list-group list-group-flush" id="academicDetails"></ul>
-                </div>
-            </div>
-        </div>
+        headers = []
+        seen = {}
 
-        <div class="card detail-card mt-3">
-            <div class="card-header">Other Details</div>
-            <ul class="list-group list-group-flush" id="otherDetails"></ul>
-        </div>
+        for i, h in enumerate(raw_headers):
+            h = h.strip() if h else f"Unnamed_{i}"
+            if h in seen:
+                seen[h] += 1
+                h = f"{h}_{seen[h]}"
+            else:
+                seen[h] = 0
+            headers.append(h)
 
-    </div>
-</div>
+        df = pd.DataFrame(values[1:], columns=headers)
 
-<!-- =========================================================
-     📦 BOX 2 — BATCH ANALYTICS
-========================================================= -->
-<div class="dashboard-box">
+    SHEET_CACHE[sheet_title] = {
+        "df": df
+    }
 
-    <div class="box-title">📦 BOX 2 — Batch Analytics</div>
+    return SHEET_CACHE[sheet_title]
 
-    <div class="row g-3 mb-3">
-        <div class="col-md-4">
-            <label class="fw-bold">Analytics Category</label>
-            <select id="analyticsField" class="form-select">
-                {% for f in analytics_fields %}
-                <option value="{{ f }}">{{ f }}</option>
-                {% endfor %}
-            </select>
-        </div>
 
-        <div class="col-md-4 d-flex align-items-end">
-            <button id="btnAnalytics"
-                    class="btn btn-success w-100">
-                Generate Analytics
-            </button>
-        </div>
+def get_sheet_df(sheet_title: str):
+    """Return cached DataFrame for a sheet, loading it if necessary."""
+    with CACHE_LOCK:
+        entry = SHEET_CACHE.get(sheet_title)
+    if entry is None:
+        # load it
+        try:
+            return load_sheet_to_cache(sheet_title)["df"]
+        except APIError as e:
+            raise
+    else:
+        return entry["df"]
 
-        <div class="col-md-4 d-flex align-items-end">
-            <button id="btnBatchPdf"
-                    class="btn btn-danger w-100">
-                📄 Download Batch Analytics PDF
-            </button>
-        </div>
-    </div>
 
-    <!-- Analytics Charts -->
-    <div class="row g-4">
-        <div class="col-md-6">
-            <h6 class="fw-bold">Analytics Chart</h6>
-            <canvas id="analyticsChart"></canvas>
-        </div>
+def list_sheets():
+    """Return list of sheet titles (workbook worksheets)."""
+    return [ws.title for ws in workbook.worksheets()]
 
-        <div class="col-md-6">
-            <h6 class="fw-bold">Arrear Status Distribution</h6>
-            <canvas id="batchArrearChart"></canvas>
-        </div>
-    </div>
 
-    <!-- Good & Below Average Students -->
-    <div class="row g-4 mt-4">
-        <div class="col-md-6">
-            <div class="card detail-card">
-                <div class="card-header bg-success">
-                    Top Students (by CGPA)
-                </div>
-                <ul class="list-group list-group-flush"
-                    id="topStudentsList"></ul>
-            </div>
-        </div>
+def normalize_colname(text: str):
+    return ''.join(ch.lower() for ch in str(text) if ch.isalnum())
 
-        <div class="col-md-6">
-            <div class="card detail-card">
-                <div class="card-header bg-danger">
-                    Below Average Students (by Arrears)
-                </div>
-                <ul class="list-group list-group-flush"
-                    id="belowStudentsList"></ul>
-            </div>
-        </div>
-    </div>
-</div>
 
-<!-- =========================================================
-     📦 BOX 3 — COURSE ANALYTICS
-========================================================= -->
-<div class="dashboard-box">
+def compute_weighted_cgpa_from_row(row: dict):
+    total_points = 0
+    total_credits = 0
+    for key, val in row.items():
+        m = re.search(r"(sem\d+)_.*_(\d+)$", key.lower())
+        if not m:
+            continue
+        credits = int(m.group(2))
+        grade = str(val).strip().upper()
+        if grade in GRADE_POINT_MAP:
+            total_points += GRADE_POINT_MAP[grade] * credits
+            total_credits += credits
+    if total_credits == 0:
+        return None
+    return round(total_points / total_credits, 2)
 
-    <div class="box-title">📦 BOX 3 — Course Analytics</div>
+
+def compute_sem_gpa_from_row(row: dict):
+    sem_totals = {}
+    for key, val in row.items():
+        m = re.search(r"(sem\d+)_.*_(\d+)$", key.lower())
+        if not m:
+            continue
+        sem = m.group(1).capitalize()
+        credits = int(m.group(2))
+        grade = str(val).strip().upper()
+        sem_totals.setdefault(sem, {"points": 0, "credits": 0})
+        if grade in GRADE_POINT_MAP:
+            sem_totals[sem]["points"] += GRADE_POINT_MAP[grade] * credits
+            sem_totals[sem]["credits"] += credits
+    labels = []
+    values = []
+    for sem in sorted(sem_totals.keys(), key=lambda s: int(s[3:])):
+        pts = sem_totals[sem]["points"]
+        cr = sem_totals[sem]["credits"]
+        gpa = round(pts / cr, 2) if cr > 0 else None
+        labels.append(sem)
+        values.append(gpa)
+    return labels, values
+
+
+def compute_semester_arrears_from_row(row: dict):
+    arrear_keywords = {"RA", "U", "UA", "F", "FAIL", "ABSENT"}
+    sem_arrears = {}
+    for key, val in row.items():
+        m = re.search(r"(sem\d+)_.*_(\d+)$", key.lower())
+        if not m:
+            continue
+        sem = m.group(1).capitalize()
+        grade = str(val).strip().upper()
+        sem_arrears[sem] = sem_arrears.get(sem, 0) + (1 if grade in arrear_keywords else 0)
+    items = sorted(sem_arrears.items(), key=lambda x: int(x[0][3:]))
+    labels = [k for k, _ in items]
+    values = [v for _, v in items]
+    return labels, values
+
+
+# ---------------- ROUTES ---------------- #
+@app.route("/test")
+def test():
+    return "Flask is working"
     
-    <!-- FEATURE 1 -->
-    <div id="feature-f1" class="new-feature" style="display:none;">
-        <h6>Batch-wise Subject Pass %</h6>
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>S.No</th>
-                    <th>Subject Code</th>
-                    <th>Pass %</th>
-                </tr>
-            </thead>
-            <tbody id="f1-body"></tbody>
-        </table>
-    </div>
-
-    <!-- FEATURE 2 -->
-    <div id="feature-f2" class="new-feature" style="display:none;">
-        <h6>Department-wise Subject Pass %</h6>
-        <div id="f2-table"></div>
-    </div>
-
-    <!-- FEATURE 3 -->
-    <div id="feature-f3" class="new-feature" style="display:none;">
-        <h6>Batch-wise Cutoff vs Arrear Distribution</h6>
-        <div id="f3-table"></div>
-    </div>
-
-    <!-- FEATURE 4 -->
-    <div id="feature-f4" class="new-feature" style="display:none;">
-        <h6>Department-wise Cutoff vs Arrear Distribution</h6>
-        <div id="f4-table"></div>
-    </div>
-
-    <!-- FEATURE 5 -->
-    <div id="feature-f5" class="new-feature" style="display:none;">
-        <h6>Department Dashboard</h6>
-        <div id="f5-dashboard"></div>
-    </div>
-
-
-
-
-    <!-- Filters -->
-    <div class="row g-3 mb-3">
-        <div class="col-md-3">
-            <label class="fw-bold">Department</label>
-            <select id="departmentSelect" class="form-select">
-                <option value="">All</option>
-                <option>CSE</option>
-                <option>AIDS</option>
-                <option>AIML</option>
-                <option>IT</option>
-                <option>MECH</option>
-                <option>CIVIL</option>
-                <option>ECE</option>
-                <option>EEE</option>
-            </select>
-        </div>
-
-        <div class="col-md-3">
-            <label class="fw-bold">Arrear Count</label>
-            <select id="arrearBucket" class="form-select">
-                <option>0</option>
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-                <option>6-10</option>
-                <option>>10</option>
-            </select>
-        </div>
-
-        <div class="col-md-3 d-grid">
-            <button id="btnBatchWise"
-                    class="btn btn-primary">
-                Batch wise
-            </button>
-        </div>
-
-        <div class="col-md-3 d-grid">
-            <button id="btnDeptWise"
-                    class="btn btn-outline-primary">
-                Department wise
-            </button>
-        </div>
-    </div>
-
-    <!-- Student list result -->
-    <div class="card detail-card mb-4" id="studentsResultCard"
-         style="display:none;">
-        <div class="card-header">
-            Students List
-        </div>
-        <div class="card-body"
-             id="studentsResult"
-             style="max-height:300px; overflow:auto;">
-        </div>
-    </div>
-
-    <!-- Course arrear count -->
-    <div class="card detail-card mb-4">
-        <div class="card-header">
-            Courses and its Arrears Count
-        </div>
-
-        <div class="p-3">
-            <div class="form-check form-check-inline">
-                <input class="form-check-input"
-                       type="radio"
-                       name="courseScope"
-                       value="batch"
-                       checked>
-                <label class="form-check-label">
-                    Batch wise
-                </label>
-            </div>
-
-            <div class="form-check form-check-inline">
-                <input class="form-check-input"
-                       type="radio"
-                       name="courseScope"
-                       value="dept">
-                <label class="form-check-label">
-                    Department wise
-                </label>
-            </div>
-
-            <button id="btnCoursesArrear"
-                    class="btn btn-success btn-sm ms-3">
-                Show
-            </button>
-        </div>
-
-        <div class="card-body"
-             id="coursesArrearTable"
-             style="max-height:350px; overflow:auto;">
-        </div>
-    </div>
-
-    <!-- Subject analytics -->
-    <div class="row g-3">
-        <div class="col-md-4">
-            <label class="fw-bold">Subject Code</label>
-            <select id="subjectCodeSelect"
-                    class="form-select"></select>
-
-            <div class="mt-2">
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input"
-                           type="radio"
-                           name="subjectScope"
-                           value="batch"
-                           checked>
-                    <label class="form-check-label">
-                        Batch
-                    </label>
-                </div>
-
-                <div class="form-check form-check-inline">
-                    <input class="form-check-input"
-                           type="radio"
-                           name="subjectScope"
-                           value="dept">
-                    <label class="form-check-label">
-                        Department
-                    </label>
-                </div>
-            </div>
-
-            <div class="d-grid gap-2 mt-3">
-                <button id="btnFailureList"
-                        class="btn btn-warning btn-sm">
-                    List of Failure Students
-                </button>
-
-                <button id="btnGradeBar"
-                        class="btn btn-secondary btn-sm">
-                    Grade Bar Chart
-                </button>
-
-                <button class="btn btn-danger mb-3"
-                        onclick="printPagePDF()">
-                    🖨️ Print the page
-                </button>
-            </div>
-        </div>
-
-        <div class="col-md-8">
-            <div class="card detail-card mb-3"
-                 id="failureListCard"
-                 style="display:none;">
-                <div class="card-header bg-warning">
-                    Failure Students
-                </div>
-                <div class="card-body"
-                     id="failureList"
-                     style="max-height:250px; overflow:auto;">
-                </div>
-            </div>
-
-            <div class="card detail-card"
-                 id="gradeChartCard"
-                 style="display:none;">
-                <div class="card-header bg-secondary text-white">
-                    Grade Distribution
-                </div>
-                <div class="card-body">
-                    <canvas id="gradeSubjectChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="btn-group mb-4" role="group">
-    <button class="btn btn-outline-primary" onclick="showNewFeature('f1'); loadFeatureF1();">
-        Subject Pass % (Batch)
-    </button>
-    <button class="btn btn-outline-primary" onclick="showNewFeature('f2'); loadFeatureF2();">
-        Subject Pass % (Department)
-    </button>
-    <button class="btn btn-outline-primary" onclick="showNewFeature('f3'); loadFeatureF3();">
-        Cutoff vs Arrears (Batch)
-    </button>
-    <button class="btn btn-outline-primary" onclick="showNewFeature('f4'); loadFeatureF4();">
-        Cutoff vs Arrears (Department)
-    </button>
-    <button class="btn btn-outline-primary" onclick="showNewFeature('f5'); loadFeatureF5();">
-        Department Dashboard
-    </button>
-</div>
-
- 
-</div>
-
-
-
-    
-<script>
-/* =========================================================
-   COMMON HELPERS
-========================================================= */
-
-const API = {
-    students: "/students",
-    studentDetails: "/student_details",
-    analytics: "/analytics_data",
-    arrearStatus: "/batch_arrear_status",
-    topBottom: "/batch_top_bottom"
-};
-
-function qs(id){ return document.getElementById(id); }
-
-function post(url, data){
-    return fetch(url,{
-        method:"POST",
-        body:new URLSearchParams(data)
-    }).then(r=>r.json());
-}
-
-function clear(el){ el.innerHTML=""; }
-
-function badge(text, cls="secondary"){
-    return `<span class="badge bg-${cls}">${text}</span>`;
-}
-
-function colors(n){
-    const c=["#3366CC","#DC3912","#FF9900","#109618","#990099","#0099C6","#DD4477","#66AA00","#B82E2E"];
-    return Array.from({length:n},(_,i)=>c[i%c.length]);
-}
-
-/* =========================================================
-   BOX-1 — STUDENT SEARCH & DETAILS
-========================================================= */
-
-let gradeChart, semArrearBar, semArrearLine, gpaChart, rankChart;
-/*
-async function loadStudents(){
-    const sheet=qs("sheetSelect").value;
-    const students=await post(API.students,{sheet});
-    const sel=qs("studentSelect");
-    clear(sel);
-    students.forEach(s=>{
-        const o=document.createElement("option");
-        o.value=s; o.textContent=s;
-        sel.appendChild(o);
-    });
-}
-
-qs("sheetSelect").addEventListener("change", loadStudents);
-loadStudents();
-*/
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    async function loadStudents() {
-        const sheet = document.getElementById("sheetSelect").value;
-        const studentSelect = document.getElementById("studentSelect");
-
-        studentSelect.innerHTML = "<option>Loading...</option>";
-
-        try {
-            const res = await fetch("/students", {
-                method: "POST",
-                body: new URLSearchParams({ sheet })
-            });
-
-            if (!res.ok) {
-                studentSelect.innerHTML = "<option>Error loading students</option>";
-                return;
-            }
-
-            const data = await res.json();
-            console.log("Students loaded:", data);
-
-            studentSelect.innerHTML = "";
-
-            if (!Array.isArray(data) || data.length === 0) {
-                studentSelect.innerHTML = "<option>No students found</option>";
-                return;
-            }
-
-            data.forEach(name => {
-                const opt = document.createElement("option");
-                opt.value = name;
-                opt.textContent = name;
-                studentSelect.appendChild(opt);
-            });
-
-        } catch (err) {
-            console.error("Student load error:", err);
-            studentSelect.innerHTML = "<option>Failed to load</option>";
-        }
-    }
-
-    // Bind event AFTER DOM is ready
-    //document.getElementById("sheetSelect").addEventListener("change", loadStudents);
-    document.getElementById("sheetSelect").addEventListener("change", () => {
-    loadStudents();
-    loadSubjectCodes();
-    });
-    // Initial load
-    loadStudents();
-
-    async function loadSubjectCodes() {
-    const sheet = qs("sheetSelect").value;
-    const subjectSelect = qs("subjectCodeSelect");
-
-    subjectSelect.innerHTML = "<option>Loading...</option>";
-
-    try {
-        const res = await fetch("/subject_codes", {
-            method: "POST",
-            body: new URLSearchParams({ sheet })
-        });
-
-        const data = await res.json();
-        console.log("Subject codes:", data);
-
-        subjectSelect.innerHTML = "";
-
-        if (!Array.isArray(data) || data.length === 0) {
-            subjectSelect.innerHTML = "<option>No subjects</option>";
-            return;
-        }
-
-        data.forEach(code => {
-            const opt = document.createElement("option");
-            opt.value = code;
-            opt.textContent = code;
-            subjectSelect.appendChild(opt);
-        });
-
-    } catch (err) {
-        console.error("Subject load error:", err);
-        subjectSelect.innerHTML = "<option>Error loading</option>";
-    }
-}
-
-});
-
-document.addEventListener("DOMContentLoaded", () => {
-    loadStudents();
-    loadSubjectCodes();
-});
-
-qs("studentSearch").addEventListener("keyup",()=>{
-    const q=qs("studentSearch").value.toLowerCase();
-    [...qs("studentSelect").options].forEach(o=>{
-        o.hidden=!o.value.toLowerCase().includes(q);
-    });
-});
-
-async function loadStudent(){
-    const sheet=qs("sheetSelect").value;
-    const student=qs("studentSelect").value;
-    const data=await post(API.studentDetails,{sheet,student});
-    if(!data.details) return;
-
-    qs("studentCard").style.display="block";
-    qs("studName").textContent=student;
-    qs("arrears").textContent=data.arrears;
-    qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
-    qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
-
-    if(data.photo_url){
-        qs("studentPhoto").src=data.photo_url;
-        qs("photoLink").href=data.photo_url;
-    }
-
-    function fill(list,obj){
-        clear(list);
-        Object.entries(obj).forEach(([k,v])=>{
-            list.innerHTML+=`<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
-        });
-    }
-    fill(qs("personalDetails"),data.sections.personal);
-    fill(qs("parentDetails"),data.sections.parent);
-    fill(qs("academicDetails"),data.sections.academic);
-    fill(qs("otherDetails"),data.sections.other);
-
-    renderChart("gradeChart","bar",
-        Object.keys(data.grades),
-        Object.values(data.grades)
-    );
-
-    renderChart("semArrearBarChart","bar",
-        data.sem_arrears_labels,
-        data.sem_arrears_values,true
-    );
-
-    renderChart("semArrearLineChart","line",
-        data.sem_arrears_labels,
-        data.sem_arrears_values,true
-    );
-
-    renderChart("gpaTrendChart","line",
-        data.sem_gpa_labels,
-        data.sem_gpa_values
-    );
-
-    renderChart("rankTrendChart","line",
-        data.sem_gpa_labels,
-        data.sem_rank_values,true
-    );
-}
-
-function renderChart(id,type,labels,values,intY=false){
-    const ctx=qs(id);
-    if(ctx.chart) ctx.chart.destroy();
-    ctx.chart=new Chart(ctx,{
-        type,
-        data:{labels,datasets:[{data:values,backgroundColor:colors(labels.length)}]},
-        options:{
-            plugins:{legend:{display:false}},
-            scales:{y:{beginAtZero:true,ticks:{precision:intY?0:2}}}
-        }
-    });
-}
-
-qs("pdfStudentBtn").onclick=()=>{
-    const s=qs("sheetSelect").value;
-    const n=qs("studentSelect").value;
-    window.open(`/student_report?sheet=${s}&student=${n}`);
-};
-
-/* =========================================================
-   BOX-2 — BATCH ANALYTICS
-========================================================= */
-
-let analyticsChart, arrearChart;
-
-qs("btnAnalytics").onclick=async()=>{
-    const sheet=qs("sheetSelect").value;
-    const col=qs("analyticsField").value;
-    const d=await post(API.analytics,{sheet,column:col});
-    if(analyticsChart) analyticsChart.destroy();
-    analyticsChart=new Chart(qs("analyticsChart"),{
-        type:"bar",
-        data:{labels:d.labels,datasets:[{data:d.values,backgroundColor:colors(d.labels.length)}]},
-        options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
-    });
-
-    const a=await post(API.arrearStatus,{sheet});
-    if(arrearChart) arrearChart.destroy();
-    arrearChart=new Chart(qs("batchArrearChart"),{
-        type:"bar",
-        data:{labels:a.labels,datasets:[{data:a.values,backgroundColor:colors(a.labels.length)}]},
-        options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0}}}}
-    });
-
-    const tb=await post(API.topBottom,{sheet});
-    fillList("topStudentsList",tb.top,"cgpa");
-    fillList("belowStudentsList",tb.bottom,"arrears");
-};
-
-function fillList(id,list,key){
-    clear(qs(id));
-    list.forEach(x=>{
-        qs(id).innerHTML+=`<li class="list-group-item">${x.name} ${badge(x[key])}</li>`;
-    });
-}
-
-/* =========================================================
-   BOX-3 — COURSE ANALYTICS
-========================================================= */
-
-qs("btnBatchWise").onclick=()=>filterStudents("batch");
-qs("btnDeptWise").onclick=()=>filterStudents("dept");
-
-
-/*
-async function filterStudents(mode){
-    qs("studentsResultCard").style.display="block";
-    clear(qs("studentsResult"));
-    const bucket=qs("arrearBucket").value;
-    const [min,max]=bucket==="6-10"?[6,10]:bucket===">10"?[11,99]:[+bucket,+bucket];
-
-    const sheets=[...qs("sheetSelect").options].map(o=>o.value);
-    for(const s of (mode==="batch"?[qs("sheetSelect").value]:sheets)){
-        const studs=await post(API.students,{sheet:s});
-        for(const n of studs){
-            const d=await post(API.studentDetails,{sheet:s,student:n});
-            if(d.arrears>=min && d.arrears<=max){
-                qs("studentsResult").innerHTML+=
-                `<div>${n} ${badge("Arrears "+d.arrears)}</div>`;
-            }
-        }
-    }
-}
-*/
-async function filterStudents(scope) {
-
-    const dept = qs("departmentSelect").value;
-    const bucket = qs("arrearBucket").value;
-    const sheet = qs("sheetSelect").value;
-
-    qs("studentsResultCard").style.display = "block";
-    qs("studentsResult").innerHTML = "Processing...";
-
-    const res = await fetch("/students_by_arrears", {
-        method: "POST",
-        body: new URLSearchParams({
-            scope,
-            sheet,
-            department: dept,
-            bucket
-        })
-    });
-
-    const data = await res.json();
-    qs("studentsResult").innerHTML = "";
-
-    if (!Array.isArray(data) || data.length === 0) {
-        qs("studentsResult").innerHTML =
-            "<div class='text-muted'>No students found</div>";
-        return;
-    }
-
-    data.forEach(s => {
-        qs("studentsResult").innerHTML += `
-            <div class="mb-1">
-                <strong>${s.name}</strong>
-                <span class="badge bg-danger ms-2">
-                    Arrears: ${s.arrears}
-                </span>
-                <span class="badge bg-info ms-2">
-                    ${s.batch}
-                </span>
-            </div>
-        `;
-    });
-}
-
-
-/*qs("btnCoursesArrear").onclick=()=>alert("Course arrear counts handled server-side (already enabled)");*/
-
-/*<script>*/
-/* ===========================
-   COURSES & ITS ARREARS COUNT
-=========================== */
-
-qs("btnCoursesArrear").onclick = async () => {
-
-    const scope = document.querySelector('input[name="courseScope"]:checked').value;
-    const tableDiv = qs("coursesArrearTable");
-    tableDiv.innerHTML = "<div class='text-muted'>Processing...</div>";
-
-    // Helper: extract subject code from column name
-    function getSubjectCode(col){
-        const m = col.match(/Sem\d+_([A-Za-z0-9]+)_/i);
-        return m ? m[1].toUpperCase() : null;
-    }
-
-    // Helper: count arrear grades
-    function isArrear(v){
-        return ["RA","U","FAIL","F","ABSENT"].includes(String(v).toUpperCase().trim());
-    }
-
-    // -----------------------------
-    // BATCH WISE
-    // -----------------------------
-    if(scope === "batch"){
-        const sheet = qs("sheetSelect").value;
-        const students = await post(API.students,{sheet});
-        const subjectCounts = {};
-
-        for(const name of students){
-            const d = await post(API.studentDetails,{sheet,student:name});
-            if(!d || !d.details) continue;
-
-            for(const [col,val] of Object.entries(d.details)){
-                if(!/Sem\d+_.*_\d+$/i.test(col)) continue;
-
-                const code = getSubjectCode(col);
-                if(!code) continue;
-
-                if(isArrear(val)){
-                    subjectCounts[code] = (subjectCounts[code] || 0) + 1;
-                }
-            }
-        }
-
-        // Render table
-        let html = `<table class="table table-sm table-bordered">
-                    <thead>
-                        <tr><th>Subject Code</th><th>Arrear Count</th></tr>
-                    </thead><tbody>`;
-        for(const s of Object.keys(subjectCounts).sort()){
-            html += `<tr><td>${s}</td><td>${subjectCounts[s]}</td></tr>`;
-        }
-        html += "</tbody></table>";
-
-        tableDiv.innerHTML = html;
-    }
-
-    // -----------------------------
-    // DEPARTMENT WISE (ALL BATCHES)
-    // -----------------------------
-    else {
-        const sheets = [...qs("sheetSelect").options].map(o=>o.value);
-        const matrix = {}; // subject → batch → count
-
-        for(const sh of sheets){
-            const students = await post(API.students,{sheet:sh});
-            for(const name of students){
-                const d = await post(API.studentDetails,{sheet:sh,student:name});
-                if(!d || !d.details) continue;
-
-                for(const [col,val] of Object.entries(d.details)){
-                    if(!/Sem\d+_.*_\d+$/i.test(col)) continue;
-
-                    const code = getSubjectCode(col);
-                    if(!code) continue;
-
-                    if(isArrear(val)){
-                        matrix[code] ??= {};
-                        matrix[code][sh] = (matrix[code][sh] || 0) + 1;
-                    }
-                }
-            }
-        }
-
-        // Render wide table
-        let html = `<div style="overflow:auto"><table class="table table-sm table-bordered">
-                    <thead><tr><th>Subject</th>`;
-        sheets.forEach(s=>html+=`<th>${s}</th>`);
-        html += "</tr></thead><tbody>";
-
-        Object.keys(matrix).sort().forEach(sub=>{
-            html += `<tr><td>${sub}</td>`;
-            sheets.forEach(s=>{
-                html += `<td>${matrix[sub][s] || 0}</td>`;
-            });
-            html += "</tr>";
-        });
-
-        html += "</tbody></table></div>";
-        tableDiv.innerHTML = html;
-    }
-};
-
-
-qs("btnFailureList").onclick=()=>alert("Failure list rendered via subject analytics");
-
-qs("btnGradeBar").onclick=()=>alert("Grade bar chart rendered via subject analytics");
-async function loadSubjectCodes() {
-    const sheet = qs("sheetSelect").value;
-    const select = qs("subjectCodeSelect");
-
-    select.innerHTML = "<option>Loading...</option>";
-
-    try {
-        const res = await fetch("/subject_codes", {
-            method: "POST",
-            body: new URLSearchParams({ sheet })
-        });
-
-        const data = await res.json();
-        console.log("Loaded subject codes:", data);
-
-        select.innerHTML = "";
-
-        if (!Array.isArray(data) || data.length === 0) {
-            select.innerHTML = "<option>No subjects found</option>";
-            return;
-        }
-
-        data.forEach(code => {
-            const opt = document.createElement("option");
-            opt.value = code;
-            opt.textContent = code;
-            select.appendChild(opt);
-        });
-
-    } catch (err) {
-        console.error("Subject code load error:", err);
-        select.innerHTML = "<option>Error loading subjects</option>";
-    }
-}
-
-
-/* ===========================
-   SUBJECT FAILURE LIST
-=========================== */
-qs("btnFailureList").onclick = async () => {
-
-    const subject = qs("subjectCodeSelect").value;
-    const scope = document.querySelector('input[name="subjectScope"]:checked').value;
-    const sheet = qs("sheetSelect").value;
-
-    qs("failureListCard").style.display = "block";
-    qs("gradeChartCard").style.display = "none";
-    qs("failureList").innerHTML = "Loading...";
-
-    const res = await fetch("/subject_analytics", {
-        method: "POST",
-        body: new URLSearchParams({ subject, scope, sheet })
-    });
-
-    const data = await res.json();
-    qs("failureList").innerHTML = "";
-
-    if (data.failures.length === 0) {
-        qs("failureList").innerHTML = "<div>No failures</div>";
-        return;
-    }
-
-    data.failures.forEach(f => {
-        qs("failureList").innerHTML +=
-            `<div>${f.name} <span class="badge bg-danger">${f.batch}</span></div>`;
-    });
-};
-
-/* ===========================
-   SUBJECT GRADE BAR CHART
-=========================== */
-let gradeSubjectChart;
-
-qs("btnGradeBar").onclick = async () => {
-
-    const subject = qs("subjectCodeSelect").value;
-    const scope = document.querySelector('input[name="subjectScope"]:checked').value;
-    const sheet = qs("sheetSelect").value;
-
-    qs("gradeChartCard").style.display = "block";
-    qs("failureListCard").style.display = "none";
-
-    const res = await fetch("/subject_analytics", {
-        method: "POST",
-        body: new URLSearchParams({ subject, scope, sheet })
-    });
-
-    const data = await res.json();
-
-    const labels = Object.keys(data.grades);
-    const values = Object.values(data.grades);
-
-    if (gradeSubjectChart) gradeSubjectChart.destroy();
-
-    gradeSubjectChart = new Chart(qs("gradeSubjectChart"), {
-        type: "bar",
-        data: {
-            labels,
-            datasets: [{
-                data: values,
-                backgroundColor: colors(labels.length)
-            }]
+@app.route("/")
+def home():
+    sheets = list_sheets()
+    dashboard = {}
+    return render_template("home_final1print.html", sheets=sheets, analytics_fields=ANALYTICS_FIELDS,
+        dashboard=dashboard)
+
+
+@app.route("/refresh_cache", methods=["POST", "GET"])
+def refresh_cache():
+    """Refresh cache for one sheet or all sheets. Admin endpoint."""
+    sheet = request.args.get("sheet")
+    try:
+        if sheet:
+            load_sheet_to_cache(sheet)
+            return jsonify({"status": "ok", "sheet": sheet}), 200
+        else:
+            # load all sheets
+            sheets = list_sheets()
+            for s in sheets:
+                load_sheet_to_cache(s)
+            return jsonify({"status": "ok", "sheets_loaded": sheets}), 200
+    except APIError as e:
+        return jsonify({"error": "Google API error", "detail": str(e)}), 500
+
+
+@app.route("/students", methods=["POST"])
+def students():
+    """Return list of student names from cached sheet (load sheet if missing)."""
+    sheet = request.form.get("sheet")
+    if not sheet:
+        return jsonify({"error": "sheet parameter required"}), 400
+    try:
+        df = get_sheet_df(sheet)
+    except APIError as e:
+        return jsonify({"error": "Google API error", "detail": str(e)}), 500
+
+    # find name column
+    name_col = next((c for c in df.columns if "name" in str(c).lower()), None)
+    if name_col is None:
+        return jsonify([])
+
+    names = df[name_col].astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist()
+    names = sorted(names)
+    return jsonify(names)
+
+
+@app.route("/student_details", methods=["POST"])
+def student_details():
+    """Return detailed data for a single student using cached DataFrame."""
+    sheet = request.form.get("sheet")
+    student = request.form.get("student")
+    if not sheet or not student:
+        return jsonify({"error": "sheet and student parameters required"}), 400
+
+    try:
+        df = get_sheet_df(sheet)
+    except APIError as e:
+        return jsonify({"error": "Google API error", "detail": str(e)}), 500
+
+    name_col = next((c for c in df.columns if "name" in str(c).lower()), None)
+    if name_col is None:
+        return jsonify({"error": "Name column not found"}), 400
+
+    df_copy = df.copy()
+    df_copy["__match__"] = df_copy[name_col].astype(str).str.strip().str.lower()
+    mask = df_copy["__match__"] == student.strip().lower()
+    if not mask.any():
+        return jsonify({"error": f"Student '{student}' not found"}), 404
+
+    row = df_copy[mask].iloc[0].drop(labels="__match__")
+    student_data = row.to_dict()
+
+    # photo detection & conversion
+    photo_url = None
+    for col in df.columns:
+        if "photo" in str(col).lower() or "image" in str(col).lower():
+            raw = row.get(col)
+            photo_url = convert_drive_link(raw)
+            break
+
+    # overall arrears
+    arrear_keywords = {"RA", "U", "UA", "F", "FAIL", "ABSENT"}
+    arrears_count = sum(1 for v in student_data.values() if str(v).strip().upper() in arrear_keywords)
+
+    # grade distribution (only semester subject columns)
+    grades = {}
+    for k, v in student_data.items():
+        if re.search(r"(sem\d+)_.*_(\d+)$", str(k).lower()):
+            g = str(v).strip().upper()
+            if g in GRADE_POINT_MAP:
+                grades[g] = grades.get(g, 0) + 1
+
+    # semester arrears
+    sem_arrears_labels, sem_arrears_values = compute_semester_arrears_from_row(student_data)
+
+    # categorized details
+    personal = {}
+    parent = {}
+    academic = {}
+    other = {}
+    for k, v in student_data.items():
+        kl = str(k).lower()
+        if any(t in kl for t in ["father", "mother", "guardian", "parent"]):
+            parent[k] = v
+        elif any(t in kl for t in ["sem", "gpa", "grade", "subject", "marks", "hsc", "cut off", "cutoff"]):
+            academic[k] = v
+        elif any(t in kl for t in ["name", "gender", "dob", "reg", "roll", "mobile", "email", "address", "native", "district"]):
+            personal[k] = v
+        else:
+            other[k] = v
+
+    # cgpa
+    cgpa_value = compute_weighted_cgpa_from_row(student_data)
+
+    # class CGPA list and rank
+    cgpa_list = []
+    for _, rec in df_copy.iterrows():
+        rdict = rec.drop(labels="__match__").to_dict()
+        cg = compute_weighted_cgpa_from_row(rdict)
+        if cg is not None:
+            cgpa_list.append(cg)
+    class_size = len(cgpa_list)
+    rank_value = None
+    if cgpa_value is not None and class_size > 0:
+        sorted_cg = sorted(cgpa_list, reverse=True)
+        rank_value = sorted_cg.index(cgpa_value) + 1
+
+    # semester GPA & rank per semester
+    sem_gpa_labels, sem_gpa_values = compute_sem_gpa_from_row(student_data)
+
+    # prepare per-student sem gpa mapping across class for ranking
+    all_sem_gpa_dicts = []
+    for _, rec in df_copy.iterrows():
+        rdict = rec.drop(labels="__match__").to_dict()
+        labs, vals = compute_sem_gpa_from_row(rdict)
+        all_sem_gpa_dicts.append(dict(zip(labs, vals)))
+
+    sem_rank_values = []
+    for sem, my_gpa in zip(sem_gpa_labels, sem_gpa_values):
+        if my_gpa is None:
+            sem_rank_values.append(None)
+            continue
+        gpas_this_sem = [d.get(sem) for d in all_sem_gpa_dicts if d.get(sem) is not None]
+        if not gpas_this_sem:
+            sem_rank_values.append(None)
+        else:
+            sorted_list = sorted(gpas_this_sem, reverse=True)
+            # protect against missing my_gpa in list (shouldn't happen)
+            try:
+                sem_rank_values.append(sorted_list.index(my_gpa) + 1)
+            except ValueError:
+                sem_rank_values.append(None)
+
+    response = {
+        "details": student_data,
+        "arrears": arrears_count,
+        "grades": grades,
+        "sem_arrears_labels": sem_arrears_labels,
+        "sem_arrears_values": sem_arrears_values,
+        "sections": {
+            "personal": personal,
+            "parent": parent,
+            "academic": academic,
+            "other": other
         },
-        options: {
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, ticks: { precision: 0 } }
-            }
-        }
-    });
-};
-// Auto-load student when PDF mode
-const params = new URLSearchParams(window.location.search);
-if (params.get("pdf") === "1") {
-    setTimeout(() => {
-        loadStudent();
-    }, 1500);
-}
-/*
-function printPagePDF(){
-    window.print();
-}
-*/
-
-function autoSavePDF() {
-
-    const batch = document.getElementById("sheetSelect")?.value || "BATCH";
-    const student = document.getElementById("studentSelect")?.value || "ALL";
-
-    fetch("/autosave_pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            html: document.documentElement.outerHTML,
-            batch: batch,
-            student: student
-        })
-    })
-    .then(res => res.blob())
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${batch}_${student}_Performance_Report.pdf`;
-        a.click();
-        window.URL.revokeObjectURL(url);
-    });
-}
-
-/*new features added from here*/
-async function loadSubjectPass() {
-    const sheet = qs("sheetSelect").value;
-    const data = await post("/subject_pass_percentage",{sheet});
-
-    let html = "<table class='table table-bordered'><tr><th>S.No</th><th>Subject</th><th>Pass %</th></tr>";
-    data.forEach((r,i)=>{
-        html += `<tr><td>${i+1}</td><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
-    });
-    html += "</table>";
-
-    document.getElementById("coursesArrearTable").innerHTML = html;
-}
-
-async function loadDeptDashboard(){
-    const dept = qs("departmentSelect").value;
-    const data = await post("/dept_dashboard",{department:dept});
-
-    let html="<table class='table table-bordered'><tr><th>Batch</th><th>Strength</th></tr>";
-    data.forEach(d=>{
-        html+=`<tr><td>${d.batch}</td><td>${d.strength}</td></tr>`;
-    });
-    html+="</table>";
-
-    qs("studentsResult").innerHTML = html;
-    qs("studentsResultCard").style.display="block";
-}
-
-/* Correction here*/
-function showNewFeature(key) {
-
-    // Hide all feature sections
-    document.querySelectorAll(".new-feature").forEach(div => {
-        div.style.display = "none";
-    });
-
-    // Show selected feature
-    const target = document.getElementById("feature-" + key);
-    if (target) {
-        target.style.display = "block";
+        "photo_url": photo_url,
+        "cgpa": cgpa_value,
+        "rank": rank_value,
+        "class_size": class_size,
+        "sem_gpa_labels": sem_gpa_labels,
+        "sem_gpa_values": sem_gpa_values,
+        "sem_rank_values": sem_rank_values
     }
-}
 
-// Default feature on page load
-document.addEventListener("DOMContentLoaded", () => {
-    showNewFeature("f1");
-});
-
-async function loadFeatureF1() {
-    const sheet = qs("sheetSelect").value;
-    const tbody = qs("f1-body");
-    tbody.innerHTML = "<tr><td colspan='3'>Loading...</td></tr>";
-
-    const data = await post("/subject_pass_percentage", { sheet });
-
-    tbody.innerHTML = "";
-    data.forEach((r, i) => {
-        tbody.innerHTML += `
-            <tr>
-                <td>${i + 1}</td>
-                <td>${r.subject}</td>
-                <td>${r.pass_percent}</td>
-            </tr>`;
-    });
-}
-async function loadFeatureF2() {
-    const dept = qs("departmentSelect").value;
-    const div = qs("f2-table");
-    div.innerHTML = "Loading...";
-
-    const data = await post("/subject_pass_percentage_dept", { department: dept });
-
-    let html = `<table class="table table-bordered">
-        <tr><th>Subject</th><th>Pass %</th></tr>`;
-
-    data.forEach(r => {
-        html += `<tr><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
-    });
-
-    html += "</table>";
-    div.innerHTML = html;
-}
-async function loadFeatureF3() {
-    const sheet = qs("sheetSelect").value;
-    const div = qs("f3-table");
-    div.innerHTML = "Loading...";
-
-    const data = await post("/cutoff_vs_arrears_batch", { sheet });
-
-    let html = `<table class="table table-bordered">
-        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
-
-    data.forEach(r => {
-        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
-    });
-
-    html += "</table>";
-    div.innerHTML = html;
-}
-async function loadFeatureF4() {
-    const dept = qs("departmentSelect").value;
-    const div = qs("f4-table");
-    div.innerHTML = "Loading...";
-
-    const data = await post("/cutoff_vs_arrears_dept", { department: dept });
-
-    let html = `<table class="table table-bordered">
-        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
-
-    data.forEach(r => {
-        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
-    });
-
-    html += "</table>";
-    div.innerHTML = html;
-}
-async function loadFeatureF5() {
-    const dept = qs("departmentSelect").value;
-    const div = qs("f5-dashboard");
-    div.innerHTML = "Loading...";
-
-    const data = await post("/dept_dashboard", { department: dept });
-
-    let html = `<table class="table table-bordered">
-        <tr>
-            <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
-            <th>Hostellers</th><th>Day Scholars</th><th>FG</th><th>GQ</th><th>MQ</th>
-        </tr>`;
-
-    data.forEach(d => {
-        html += `
-        <tr>
-            <td>${d.batch}</td><td>${d.strength}</td><td>${d.boys}</td>
-            <td>${d.girls}</td><td>${d.hostellers}</td>
-            <td>${d.day_scholars}</td><td>${d.fg}</td>
-            <td>${d.gq}</td><td>${d.mq}</td>
-        </tr>`;
-    });
-
-    html += "</table>";
-    div.innerHTML = html;
-}
+    return jsonify(response)
 
 
-/* =========================================================
-   END
-========================================================= */
-</script>
+@app.route("/analytics_data", methods=["POST"])
+def analytics_data():
+    """Return analytics (bins or categories) for a given sheet and column using cached df."""
+    sheet = request.form.get("sheet")
+    column_label = request.form.get("column")
+    if not sheet or not column_label:
+        return jsonify({"error": "sheet and column parameters required"}), 400
 
-</body>
-</html>
+    try:
+        df = get_sheet_df(sheet)
+    except APIError as e:
+        return jsonify({"error": "Google API error", "detail": str(e)}), 500
+
+    # find column that best matches (normalize both)
+    target = normalize_colname(column_label)
+    col_match = next((c for c in df.columns if target in normalize_colname(c)), None)
+    if col_match is None:
+        return jsonify({"error": f"No matching column for {column_label}"}), 400
+
+    series = df[col_match].dropna()
+    numeric = pd.to_numeric(series, errors="coerce")
+
+    # HSC bins
+    if "hsc" in target and numeric.notna().sum() > 0:
+        values = numeric.dropna()
+        bins = [
+            ("<=300", (values <= 300).sum()),
+            (">300–350", ((values > 300) & (values <= 350)).sum()),
+            (">350–400", ((values > 350) & (values <= 400)).sum()),
+            (">400–450", ((values > 400) & (values <= 450)).sum()),
+            (">450", (values > 450).sum())
+        ]
+        labels, counts = zip(*bins)
+        return jsonify({"labels": list(labels), "values": [int(c) for c in counts], "chart_type": "bar"})
+
+    # Cutoff bins (rename detection by 'cut' prefix)
+    if "cut" in target and numeric.notna().sum() > 0:
+        values = numeric.dropna()
+        bins = [
+            ("<=80", (values <= 80).sum()),
+            (">80–100", ((values > 80) & (values <= 100)).sum()),
+            (">100–120", ((values > 100) & (values <= 120)).sum()),
+            (">120–140", ((values > 120) & (values <= 140)).sum()),
+            (">140–160", ((values > 140) & (values <= 160)).sum()),
+            (">160–180", ((values > 160) & (values <= 180)).sum()),
+            (">180", (values > 180).sum())
+        ]
+        labels, counts = zip(*bins)
+        return jsonify({"labels": list(labels), "values": [int(c) for c in counts], "chart_type": "bar"})
+
+    # Generic numeric -> 5 bins
+    if numeric.notna().sum() > 0:
+        values = numeric.dropna()
+        binned = pd.cut(values, bins=5)
+        counts = binned.value_counts().sort_index()
+        return jsonify({"labels": [str(i) for i in counts.index], "values": counts.tolist(), "chart_type": "bar"})
+
+    # Categorical -> value counts
+    counts = series.astype(str).str.strip().value_counts()
+    return jsonify({"labels": counts.index.tolist(), "values": counts.values.tolist(), "chart_type": "bar"})
+
+
+@app.route("/batch_arrear_status", methods=["POST"])
+def batch_arrear_status():
+    """
+    Compute arrear buckets for the whole sheet and return as labels/values.
+    Buckets: 0,1,2,3,4,5,6-10,>10
+    """
+    sheet = request.form.get("sheet")
+    if not sheet:
+        return jsonify({"error": "sheet parameter required"}), 400
+
+    try:
+        df = get_sheet_df(sheet)
+    except APIError as e:
+        return jsonify({"error": "Google API error", "detail": str(e)}), 500
+
+    # compute arrears per row efficiently by scanning sem columns
+    sem_cols = [c for c in df.columns if re.search(r"(sem\d+)_.*_(\d+)$", str(c).lower())]
+    if not sem_cols:
+        return jsonify({"labels": [], "values": []})
+
+    def row_arrears_count(row):
+        count = 0
+        for c in sem_cols:
+            val = str(row.get(c, "")).strip().upper()
+            if val in {"RA", "U", "UA", "F", "FAIL", "ABSENT"}:
+                count += 1
+        return count
+
+    counts = df.apply(lambda r: row_arrears_count(r), axis=1).fillna(0).astype(int)
+
+    buckets = {
+        "0": 0, "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
+        "6–10": 0, ">10": 0
+    }
+    for v in counts:
+        if v <= 5:
+            buckets[str(v)] += 1
+        elif v <= 10:
+            buckets["6–10"] += 1
+        else:
+            buckets[">10"] += 1
+
+    labels = list(buckets.keys())
+    values = list(buckets.values())
+    return jsonify({"labels": labels, "values": values, "chart_type": "bar"})
+
+
+@app.route("/batch_top_bottom", methods=["POST"])
+def batch_top_bottom():
+    """Return top 5 students by CGPA and bottom 5 by arrears (most arrears)."""
+    sheet = request.form.get("sheet")
+    if not sheet:
+        return jsonify({"error": "sheet parameter required"}), 400
+
+    try:
+        df = get_sheet_df(sheet)
+    except APIError as e:
+        return jsonify({"error": "Google API error", "detail": str(e)}), 500
+
+    name_col = next((c for c in df.columns if "name" in str(c).lower()), None)
+    if name_col is None:
+        return jsonify({"error": "Name column not found"}), 400
+
+    # compute CGPA for each row
+    def cgpa_for_row(row):
+        rdict = row.to_dict()
+        return compute_weighted_cgpa_from_row(rdict)
+
+    df2 = df.copy()
+    df2["__cgpa__"] = df2.apply(lambda r: cgpa_for_row(r), axis=1)
+
+    # compute arrears for each student
+    sem_cols = [c for c in df.columns if re.search(r"(sem\d+)_.*_(\d+)$", str(c).lower())]
+
+    def arrears_for_row(row):
+        cnt = 0
+        for c in sem_cols:
+            val = str(row.get(c, "")).strip().upper()
+            if val in {"RA", "U", "UA", "F", "FAIL", "ABSENT"}:
+                cnt += 1
+        return cnt
+
+    df2["__arrears__"] = df2.apply(lambda r: arrears_for_row(r), axis=1)
+
+    # top 5 by CGPA (desc). Keep name and cgpa
+    top_df = df2.dropna(subset=["__cgpa__"]).sort_values("__cgpa__", ascending=False).head(5)
+    top_list = [{"name": str(row[name_col]), "cgpa": round(row["__cgpa__"], 2)} for _, row in top_df.iterrows()]
+
+    # bottom 5 by arrears (highest arrears first)
+    bottom_df = df2.sort_values("__arrears__", ascending=False).head(5)
+    bottom_list = [{"name": str(row[name_col]), "arrears": int(row["__arrears__"])} for _, row in bottom_df.iterrows()]
+
+    return jsonify({"top": top_list, "bottom": bottom_list})
+
+
+@app.route("/student_report")
+def student_report():
+    """Generate a simple PDF report for a student using cached data (ReportLab)."""
+    sheet = request.args.get("sheet")
+    student_name_raw = request.args.get("student")
+    if not sheet or not student_name_raw:
+        return "Missing parameters", 400
+
+    try:
+        df = get_sheet_df(sheet)
+    except APIError as e:
+        return f"Google API error: {e}", 500
+
+    name_col = next((c for c in df.columns if "name" in str(c).lower()), None)
+    if not name_col:
+        return "Name column not found", 400
+
+    df_copy = df.copy()
+    df_copy["__match__"] = df_copy[name_col].astype(str).str.strip().str.lower()
+    mask = df_copy["__match__"] == student_name_raw.strip().lower()
+    if not mask.any():
+        return "Student not found", 404
+
+    row = df_copy[mask].iloc[0].drop(labels="__match__")
+    student_data = row.to_dict()
+
+    cgpa_value = compute_weighted_cgpa_from_row(student_data)
+    sem_gpa_labels, sem_gpa_values = compute_sem_gpa_from_row(student_data)
+
+    # build PDF
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    y = height - 50
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(50, y, f"Student Report: {student_name_raw}")
+    y -= 30
+
+    c.setFont("Helvetica", 12)
+    if cgpa_value is not None:
+        c.drawString(50, y, f"CGPA: {cgpa_value}")
+        y -= 20
+
+    c.drawString(50, y, f"Sheet: {sheet}")
+    y -= 30
+
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(50, y, "Personal Details:")
+    y -= 20
+    c.setFont("Helvetica", 11)
+    for k, v in student_data.items():
+        if any(t in str(k).lower() for t in ["name", "gender", "dob", "reg", "roll", "native", "district"]):
+            c.drawString(60, y, f"{k}: {v}")
+            y -= 15
+            if y < 80:
+                c.showPage()
+                y = height - 50
+
+    # Semester GPA
+    y -= 10
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(50, y, "Semester GPA:")
+    y -= 20
+    c.setFont("Helvetica", 11)
+    for sem, gpa in zip(sem_gpa_labels, sem_gpa_values):
+        c.drawString(60, y, f"{sem}: {gpa}")
+        y -= 15
+        if y < 80:
+            c.showPage()
+            y = height - 50
+
+    c.showPage()
+    c.save()
+    buffer.seek(0)
+    filename = f"{student_name_raw.replace(' ', '_')}_report.pdf"
+    return send_file(buffer, as_attachment=True, download_name=filename, mimetype="application/pdf")
+
+@app.route("/subject_codes", methods=["POST"])
+def subject_codes():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    subject_codes = set()
+
+    # Example column: Sem1_BS3171_2
+    for col in df.columns:
+        parts = col.split("_")
+        if len(parts) >= 3 and parts[0].lower().startswith("sem"):
+            subject_codes.add(parts[1].upper())
+
+    return jsonify(sorted(subject_codes))
+
+@app.route("/subject_analytics", methods=["POST"])
+def subject_analytics():
+    subject = request.form.get("subject")
+    scope = request.form.get("scope")  # batch / dept
+    sheet = request.form.get("sheet")
+    department = request.form.get("department")
+
+    def is_fail(v):
+        return str(v).strip().upper() in ["RA", "U", "F", "FAIL", "ABSENT"]
+
+    def grade_bucket(v):
+        v = str(v).strip().upper()
+        return v if v not in ["", "NAN"] else "NA"
+
+    #sheets = [sheet] if scope == "batch" else list(SHEET_CACHE.keys())
+    if scope == "batch":
+        sheets = [sheet]
+    else:
+        # ONLY sheets belonging to selected department
+        sheets = [
+            s for s in SHEET_CACHE.keys()
+            if department and department in s
+        ]
+    if not sheets:
+        return jsonify({
+            "scope": scope,
+            "sheets": [],
+            "data": {},
+            "pass_percent": {}
+        })
+
+    failures = []
+    grade_count = {}
+
+    for sh in sheets:
+        df = get_sheet_df(sh)
+        name_col = next(c for c in df.columns if "name" in c.lower())
+
+        for col in df.columns:
+            if f"_{subject}_" not in col:
+                continue
+
+            for _, row in df.iterrows():
+                name = row[name_col]
+                val = row[col]
+
+                if is_fail(val):
+                    failures.append({
+                        "name": name,
+                        "batch": sh
+                    })
+
+                grade = grade_bucket(val)
+                grade_count[grade] = grade_count.get(grade, 0) + 1
+
+    return jsonify({
+        "failures": failures,
+        "grades": grade_count
+    })
+
+@app.route("/download_student_pdf")
+def download_student_pdf():
+    sheet = request.args.get("sheet")
+    student = request.args.get("student")
+
+    # URL of already rendered page
+    url = f"http://127.0.0.1:5000/?sheet={sheet}&student={student}&pdf=1"
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+
+        page.goto(url, wait_until="networkidle")
+
+        pdf_path = os.path.join(tempfile.gettempdir(), f"{student}_report.pdf")
+
+        page.pdf(
+            path=pdf_path,
+            format="A4",
+            print_background=True
+        )
+
+        browser.close()
+
+    return send_file(
+        pdf_path,
+        as_attachment=True,
+        download_name=f"{student}_performance.pdf"
+    )
+#app routes for new features are added from here
+@app.route("/students_by_arrears", methods=["POST"])
+def students_by_arrears():
+    scope = request.form.get("scope")       # batch / dept
+    sheet = request.form.get("sheet")
+    dept = request.form.get("department")
+    bucket = request.form.get("bucket")
+
+    def in_bucket(a):
+        if bucket == "6-10":
+            return 6 <= a <= 10
+        if bucket == ">10":
+            return a > 10
+        return a == int(bucket)
+
+    result = []
+
+    sheets = (
+        [sheet] if scope == "batch"
+        else [s for s in SHEET_CACHE if dept in s]
+    )
+
+    for sh in sheets:
+        if dept not in sh:
+            continue
+
+        df = get_sheet_df(sh)
+        if df.empty:
+            continue
+
+        # robust name detection
+        name_col = next(
+            (c for c in df.columns
+             if "name" in c.lower() and "father" not in c.lower()),
+            None
+        )
+        if not name_col:
+            continue
+
+        for _, row in df.iterrows():
+            arrears = sum(
+                str(v).strip().upper() in ["RA", "U", "F", "FAIL"]
+                for v in row.values
+            )
+
+            if in_bucket(arrears):
+
+                result.append({
+                    "name": str(row[name_col]).strip(),
+                    "arrears": arrears,
+                    "batch": sh
+                })
+
+    return jsonify(result)
+
+from flask import send_file
+from playwright.sync_api import sync_playwright
+import tempfile
+import os
+
+@app.route("/print_page")
+def print_page():
+    # URL of the page to print (same app)
+    page_url = "http://127.0.0.1:5000/"
+
+    # Create temporary PDF file
+    temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    temp_pdf.close()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+
+        # Load page fully (important for charts)
+        page.goto(page_url, wait_until="networkidle")
+
+        page.pdf(
+            path=temp_pdf.name,
+            format="A4",
+            print_background=True,
+            margin={
+                "top": "20mm",
+                "bottom": "20mm",
+                "left": "15mm",
+                "right": "15mm"
+            }
+        )
+
+        browser.close()
+
+    return send_file(
+        temp_pdf.name,
+        as_attachment=True,
+        download_name="Student_Performance_Report.pdf",
+        mimetype="application/pdf"
+    )
+
+@app.route("/autosave_pdf", methods=["POST"])
+def autosave_pdf():
+    data = request.json
+
+    html_content = data.get("html", "")
+    batch = data.get("batch", "BATCH")
+    student = data.get("student", "ALL")
+
+    safe_batch = batch.replace(" ", "_")
+    safe_student = student.replace(" ", "_")
+    filename = f"{safe_batch}_{safe_student}_Performance_Report.pdf"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        pdf_path = tmp.name
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+
+        # Load HTML exactly as sent from browser
+        page.set_content(html_content, wait_until="networkidle")
+
+        page.pdf(
+            path=pdf_path,
+            format="A4",
+            print_background=True,
+            margin={
+                "top": "20mm",
+                "bottom": "20mm",
+                "left": "15mm",
+                "right": "15mm"
+            }
+        )
+
+        browser.close()
+
+    return send_file(
+        pdf_path,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/pdf"
+    )
+
+@app.route("/subject_pass_percentage", methods=["POST"])
+def subject_pass_percentage():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    sem_cols = [c for c in df.columns if re.search(r"Sem\d+_.*_\d+", c, re.I)]
+    results = []
+
+    fail_grades = {"U", "RA", "AU", "ABSENT", "F", "FAIL"}
+
+    for col in sem_cols:
+        subject = col.split("_")[1].upper()
+        total = df[col].notna().sum()
+        passed = df[col].apply(
+            lambda x: str(x).strip().upper() not in fail_grades
+        ).sum()
+
+        if total > 0:
+            pass_percent = round((passed / total) * 100, 2)
+            results.append({
+                "subject": subject,
+                "pass_percent": pass_percent
+            })
+
+    return jsonify(results)
+
+@app.route("/subject_pass_percentage_dept", methods=["POST"])
+def subject_pass_percentage_dept():
+    dept = request.form["department"]
+    result = {}
+
+    for batch, df in load_all_batches():
+        d = df[df["Department"] == dept]
+
+        for col in subject_columns(d):
+            passed = d[col].isin(["S","A","B","C","D","E"]).sum()
+            total = d[col].notna().sum()
+            result[col] = round(passed * 100 / total, 2) if total else 0
+
+    return jsonify([
+        {"subject": k, "pass_percent": v}
+        for k, v in result.items()
+    ])
+
+"""
+@app.route("/dept_subject_pass_percentage", methods=["POST"])
+def dept_subject_pass_percentage():
+    department = request.form.get("department")
+
+    sheets = [s for s in list_sheets() if department in s]
+    output = {}
+
+    fail_grades = {"U", "RA", "AU", "ABSENT", "F", "FAIL"}
+
+    for sh in sheets:
+        df = get_sheet_df(sh)
+        sem_cols = [c for c in df.columns if re.search(r"Sem\d+_.*_\d+", c, re.I)]
+
+        batch_result = {}
+        for col in sem_cols:
+            subject = col.split("_")[1].upper()
+            total = df[col].notna().sum()
+            passed = df[col].apply(
+                lambda x: str(x).strip().upper() not in fail_grades
+            ).sum()
+
+            if total > 0:
+                batch_result[subject] = round((passed / total) * 100, 2)
+
+        output[sh] = batch_result
+
+    return jsonify(output)
+"""
+
+@app.route("/cutoff_vs_arrears_batch", methods=["POST"])
+def cutoff_vs_arrears_batch():
+    sheet = request.form["sheet"]
+    df = load_sheet(sheet)
+
+    buckets = {"<150":0, "150-175":0, "175-200":0, ">200":0}
+
+    for _, r in df.iterrows():
+        arrears = r["Arrears"]
+        cutoff = r["Cutoff"]
+
+        if arrears > 0:
+            if cutoff < 150: buckets["<150"] += 1
+            elif cutoff <= 175: buckets["150-175"] += 1
+            elif cutoff <= 200: buckets["175-200"] += 1
+            else: buckets[">200"] += 1
+
+    return jsonify([
+        {"cutoff": k, "count": v} for k,v in buckets.items()
+    ])
+
+"""
+@app.route("/cutoff_arrear_batch", methods=["POST"])
+def cutoff_arrear_batch():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    cutoff_col = next(c for c in df.columns if "cut" in c.lower())
+
+    buckets = {
+        "80-100": (80,100),
+        "100-120": (100,120),
+        "120-140": (120,140),
+        "140-160": (140,160),
+        "160-180": (160,180),
+        ">180": (181,1000)
+    }
+
+    result = {}
+
+    for label,(lo,hi) in buckets.items():
+        subset = df[pd.to_numeric(df[cutoff_col], errors="coerce").between(lo,hi)]
+        counts = {"0":0,"1":0,"2":0,"3":0,"4":0,"5":0,"6-10":0,">10":0}
+
+        for _,row in subset.iterrows():
+            arrears = sum(
+                str(v).strip().upper() in ["RA","U","F","FAIL","ABSENT"]
+                for v in row.values
+            )
+            if arrears <= 5:
+                counts[str(arrears)] += 1
+            elif arrears <= 10:
+                counts["6-10"] += 1
+            else:
+                counts[">10"] += 1
+
+        result[label] = counts
+
+    return jsonify(result)
+"""
+@app.route("/cutoff_vs_arrears_dept", methods=["POST"])
+def cutoff_vs_arrears_dept():
+    dept = request.form["department"]
+    buckets = {"<150":0, "150-175":0, "175-200":0, ">200":0}
+
+    for _, df in load_all_batches():
+        d = df[df["Department"] == dept]
+
+        for _, r in d.iterrows():
+            if r["Arrears"] > 0:
+                c = r["Cutoff"]
+                if c < 150: buckets["<150"] += 1
+                elif c <= 175: buckets["150-175"] += 1
+                elif c <= 200: buckets["175-200"] += 1
+                else: buckets[">200"] += 1
+
+    return jsonify([
+        {"cutoff": k, "count": v} for k,v in buckets.items()
+    ])
+
+"""
+@app.route("/cutoff_arrear_dept", methods=["POST"])
+def cutoff_arrear_dept():
+    department = request.form.get("department")
+    sheets = [s for s in list_sheets() if department in s]
+
+    output = {}
+    for sh in sheets:
+        output[sh] = json.loads(
+            cutoff_arrear_batch().get_data(as_text=True)
+        )
+
+    return jsonify(output)
+"""
+@app.route("/dept_dashboard", methods=["POST"])
+def dept_dashboard():
+    dept = request.form.get("department")
+
+    dashboard = []
+
+    for batch, df in load_all_batches():  # your existing loader
+        d = df[df["Department"] == dept]
+
+        dashboard.append({
+            "batch": batch,
+            "strength": len(d),
+            "boys": int((d["Gender"] == "M").sum()),
+            "girls": int((d["Gender"] == "F").sum()),
+            "hostellers": int((d["Hostel"] == "Yes").sum()),
+            "day_scholars": int((d["Hostel"] == "No").sum()),
+            "fg": int((d["Quota"] == "FG").sum()),
+            "gq": int((d["Quota"] == "GQ").sum()),
+            "mq": int((d["Quota"] == "MQ").sum())
+        })
+
+    return jsonify(dashboard)
+
+"""
+@app.route("/dept_dashboard", methods=["POST"])
+def dept_dashboard():
+    department = request.form.get("department")
+    sheets = [s for s in list_sheets() if department in s]
+
+    dashboard = []
+
+    for sh in sheets:
+        df = get_sheet_df(sh)
+
+        def count_col(keyword):
+            col = next((c for c in df.columns if keyword in c.lower()), None)
+            return df[col].astype(str).str.upper().value_counts().to_dict() if col else {}
+
+        dashboard.append({
+            "batch": sh,
+            "strength": len(df),
+            "gender": count_col("gender"),
+            "hostel": count_col("hostel"),
+            "fg": count_col("first"),
+            "quota": count_col("gq")
+        })
+
+    return jsonify(dashboard)
+"""
+
+if __name__ == "__main__":
+    app.run(debug=True)
