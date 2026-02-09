@@ -1,0 +1,1578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Performance Dashboard</title>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- PDF & Canvas -->
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
+    <style>
+        body {
+            background-color: #f7f7f7;
+        }
+
+        .box-title {
+            font-weight: bold;
+            color: #0d6efd;
+            margin-bottom: 15px;
+        }
+
+        .dashboard-box {
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            padding: 20px;
+            margin-bottom: 25px;
+        }
+
+        #studentPhoto {
+            width: 160px;
+            height: 160px;
+            object-fit: cover;
+            border-radius: 50%;
+            border: 4px solid #dee2e6;
+        }
+
+        .detail-card {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+
+        .detail-card .card-header {
+            font-weight: bold;
+            background-color: #6c757d;
+            color: #fff;
+        }
+
+        .watermark {
+            position: fixed;
+            top: 40%;
+            left: 20%;
+            font-size: 80px;
+            color: rgba(200,200,200,0.15);
+            transform: rotate(-30deg);
+            z-index: -1;
+        }
+        #academicDetails h6 {
+            margin-bottom: 10px;
+        }
+        
+        #academicDetails .badge {
+            font-size: 0.9rem;
+        }
+        .sem-box {
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 14px;
+        }
+        
+        .sem-title {
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+        
+        .grade-badge {
+            float: right;
+            background: #212529;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+    </style>
+</head>
+
+<body class="p-4">
+
+<div class="watermark">SRM TRP ENGINEERING COLLEGE</div>
+
+<h3 class="fw-bold text-primary mb-4">📊 Student Performance Management System</h3>
+
+<!-- =========================================================
+     📦 BOX 1 — STUDENT SEARCH & DETAILS
+========================================================= -->
+<div class="dashboard-box">
+
+    <div class="box-title">📦 BOX 1 — Student Search & Details</div>
+
+    <!-- Selection Row -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label class="fw-bold">Select Batch / Sheet</label>
+            <select id="sheetSelect" class="form-select">
+                {% for s in sheets %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-md-4">
+            <label class="fw-bold">Search Student</label>
+            <input id="studentSearch" type="text" class="form-control"
+                   placeholder="Type student name...">
+        </div>
+
+        <div class="col-md-4">
+            <label class="fw-bold">Select Student</label>
+            <select id="studentSelect" class="form-select"></select>
+        </div>
+    </div>
+
+    <button class="btn btn-primary mb-4" onclick="loadStudent()">
+        Load Student Details
+    </button>
+
+    <!-- Student Card -->
+    <div id="studentCard" style="display:none;">
+
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-md-3 text-center">
+                <a id="photoLink" target="_blank">
+                    <img id="studentPhoto" src="">
+                </a>
+            </div>
+
+            <div class="col-md-9">
+                <h4 id="studName" class="fw-bold"></h4>
+                <p>
+                    <strong>Total Arrears:</strong>
+                    <span id="arrears"></span>
+                </p>
+
+                <span class="badge bg-info me-2" id="cgpaBadge">CGPA: --</span>
+                <span class="badge bg-warning text-dark" id="rankBadge">Rank: --</span>
+
+                <div class="mt-3">
+                    <button id="pdfStudentBtn"
+                            class="btn btn-danger btn-sm">
+                        📄 Download Student Performance PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="mt-4">
+            <h5 class="fw-bold mb-3">Semester-wise Results</h5>
+            <div id="semesterResults" class="row g-3"></div>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-md-4">
+                <h6 class="fw-bold">Grade Distribution</h6>
+                <canvas id="gradeChart"></canvas>
+            </div>
+
+            <div class="col-md-4">
+                <h6 class="fw-bold">Arrears per Semester</h6>
+                <canvas id="semArrearBarChart"></canvas>
+            </div>
+
+            <div class="col-md-4">
+                <h6 class="fw-bold">Arrears Trend</h6>
+                <canvas id="semArrearLineChart"></canvas>
+            </div>
+        </div>
+        <div class="row mt-4" id="semesterGrid"></div>
+        <div class="row g-4 mt-4">
+            <div class="col-md-6">
+                <h6 class="fw-bold">Semester GPA Trend</h6>
+                <canvas id="gpaTrendChart"></canvas>
+            </div>
+
+            <div class="col-md-6">
+                <h6 class="fw-bold">Semester Rank Trend</h6>
+                <canvas id="rankTrendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Details -->
+        <div class="row g-3 mt-4">
+            <div class="col-md-4">
+                <div class="card detail-card">
+                    <div class="card-header">Personal Details</div>
+                    <ul class="list-group list-group-flush" id="personalDetails"></ul>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="card detail-card">
+                    <div class="card-header">Parent Details</div>
+                    <ul class="list-group list-group-flush" id="parentDetails"></ul>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card detail-card">
+                <div class="card-header">Other Details</div>
+                <ul class="list-group list-group-flush" id="otherDetails"></ul>
+            </div>
+           
+        </div>
+        
+        <div class="card detail-card mt-3">
+            <div class="card-header">Academic Details</div>
+            <div class="card-body">
+                <div id="semesterResults" class="row g-3"></div>
+            </div>
+        </div>
+
+        
+        <div class="card detail-card mt-4">
+            <div class="card-header">Semester-wise Results</div>
+            <div class="card-body" id="semesterTable"></div>
+        </div>
+
+        
+
+    </div>
+</div>
+
+<!-- =========================================================
+     📦 BOX 2 — BATCH ANALYTICS
+========================================================= -->
+<div class="dashboard-box">
+
+    <div class="box-title">📦 BOX 2 — Batch Analytics</div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label class="fw-bold">Analytics Category</label>
+            <select id="analyticsField" class="form-select">
+                {% for f in analytics_fields %}
+                <option value="{{ f }}">{{ f }}</option>
+                {% endfor %}
+                <option value="Academic Performance">Academic Performance</option>
+            </select>
+        </div>
+
+        <div class="col-md-4 d-flex align-items-end">
+            <button id="btnAnalytics"
+                    class="btn btn-success w-100">
+                Generate Analytics
+            </button>
+        </div>
+
+        <div class="col-md-4 d-flex align-items-end">
+            <button id="btnBatchPdf"
+                    class="btn btn-danger w-100">
+                📄 Download Batch Analytics PDF
+            </button>
+        </div>
+    </div>
+
+    <!-- Analytics Charts -->
+    <div class="row g-4">
+        <div class="col-md-6">
+            <h6 class="fw-bold">Analytics Chart</h6>
+            <canvas id="analyticsChart"></canvas>
+        </div>
+
+        <div class="col-md-6">
+            <h6 class="fw-bold">Arrear Status Distribution</h6>
+            <canvas id="batchArrearChart"></canvas>
+        </div>
+    </div>
+    <div class="row mt-4" id="academicPerformanceBox" style="display:none;">
+        <div class="col-md-6">
+            <h6 class="text-danger fw-bold">High Cut-off with Arrears (≥140)</h6>
+            <div id="highCutoffBox"></div>
+        </div>
+    
+        <div class="col-md-6">
+            <h6 class="text-success fw-bold">Low Cut-off – Zero Arrears (&lt;140)</h6>
+            <div id="lowCutoffBox"></div>
+        </div>
+    </div>
+
+    <!-- Good & Below Average Students -->
+    <div class="row g-4 mt-4">
+        <div class="col-md-6">
+            <div class="card detail-card">
+                <div class="card-header bg-success">
+                    Top Students (by CGPA)
+                </div>
+                <ul class="list-group list-group-flush"
+                    id="topStudentsList"></ul>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card detail-card">
+                <div class="card-header bg-danger">
+                    Below Average Students (by Arrears)
+                </div>
+                <ul class="list-group list-group-flush"
+                    id="belowStudentsList"></ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================================
+     📦 BOX 3 — COURSE ANALYTICS
+========================================================= -->
+<div class="dashboard-box">
+
+    <div class="box-title">📦 BOX 3 — Course Analytics</div>
+    
+    <!-- FEATURE 1 -->
+    <div id="feature-f1" class="new-feature" style="display:none;">
+        <h6>Batch-wise Subject Pass %</h6>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>S.No</th>
+                    <th>Subject Code</th>
+                    <th>Pass %</th>
+                </tr>
+            </thead>
+            <tbody id="f1-body"></tbody>
+        </table>
+    </div>
+
+    <!-- FEATURE 2 -->
+    <div id="feature-f2" class="new-feature" style="display:none;">
+        <h6>Department-wise Subject Pass %</h6>
+        <div id="f2-table"></div>
+    </div>
+
+    <!-- FEATURE 3 -->
+    <div id="feature-f3" class="new-feature" style="display:none;">
+        <h6>Batch-wise Cutoff vs Arrear Distribution</h6>
+        <div id="f3-table"></div>
+    </div>
+
+    <!-- FEATURE 4 -->
+    <div id="feature-f4" class="new-feature" style="display:none;">
+        <h6>Department-wise Cutoff vs Arrear Distribution</h6>
+        <div id="f4-table"></div>
+    </div>
+
+    <!-- FEATURE 5 -->
+    <div id="feature-f5" class="new-feature" style="display:none;">
+        <h6>Department Dashboard</h6>
+        <div id="f5-dashboard"></div>
+    </div>
+
+
+
+
+    <!-- Filters -->
+    <div class="row g-3 mb-3">
+        <div class="col-md-3">
+            <label class="fw-bold">Department</label>
+            <select id="departmentSelect" class="form-select">
+                <option value="">All</option>
+                <option>CSE</option>
+                <option>AIDS</option>
+                <option>AIML</option>
+                <option>IT</option>
+                <option>MECH</option>
+                <option>CIVIL</option>
+                <option>ECE</option>
+                <option>EEE</option>
+            </select>
+        </div>
+
+        <div class="col-md-3">
+            <label class="fw-bold">Arrear Count</label>
+            <select id="arrearBucket" class="form-select">
+                <option>0</option>
+                <option>1</option>
+                <option>2</option>
+                <option>3</option>
+                <option>4</option>
+                <option>5</option>
+                <option>6-10</option>
+                <option>>10</option>
+            </select>
+        </div>
+
+        <div class="col-md-3 d-grid">
+            <button id="btnBatchWise"
+                    class="btn btn-primary">
+                Batch wise
+            </button>
+        </div>
+
+        <div class="col-md-3 d-grid">
+            <button id="btnDeptWise"
+                    class="btn btn-outline-primary">
+                Department wise
+            </button>
+        </div>
+    </div>
+
+    <!-- Student list result -->
+    <div class="card detail-card mb-4" id="studentsResultCard"
+         style="display:none;">
+        <div class="card-header">
+            Students List
+        </div>
+        <div class="card-body"
+             id="studentsResult"
+             style="max-height:300px; overflow:auto;">
+        </div>
+    </div>
+
+    <!-- Course arrear count -->
+    <div class="card detail-card mb-4">
+        <div class="card-header">
+            Courses and its Arrears Count
+        </div>
+
+        <div class="p-3">
+            <div class="form-check form-check-inline">
+                <input class="form-check-input"
+                       type="radio"
+                       name="courseScope"
+                       value="batch"
+                       checked>
+                <label class="form-check-label">
+                    Batch wise
+                </label>
+            </div>
+
+            <div class="form-check form-check-inline">
+                <input class="form-check-input"
+                       type="radio"
+                       name="courseScope"
+                       value="dept">
+                <label class="form-check-label">
+                    Department wise
+                </label>
+            </div>
+
+            <button id="btnCoursesArrear"
+                    class="btn btn-success btn-sm ms-3">
+                Show
+            </button>
+        </div>
+
+        <div class="card-body"
+             id="coursesArrearTable"
+             style="max-height:350px; overflow:auto;">
+        </div>
+    </div>
+
+    <!-- Subject analytics -->
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="fw-bold">Subject Code</label>
+            <select id="subjectCodeSelect"
+                    class="form-select"></select>
+
+            <div class="mt-2">
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input"
+                           type="radio"
+                           name="subjectScope"
+                           value="batch"
+                           checked>
+                    <label class="form-check-label">
+                        Batch
+                    </label>
+                </div>
+
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input"
+                           type="radio"
+                           name="subjectScope"
+                           value="dept">
+                    <label class="form-check-label">
+                        Department
+                    </label>
+                </div>
+            </div>
+
+            <div class="d-grid gap-2 mt-3">
+                <button id="btnFailureList"
+                        class="btn btn-warning btn-sm">
+                    List of Failure Students
+                </button>
+
+                <button id="btnGradeBar"
+                        class="btn btn-secondary btn-sm">
+                    Grade Bar Chart
+                </button>
+
+                <button class="btn btn-danger mb-3"
+                        onclick="printPagePDF()">
+                    🖨️ Print the page
+                </button>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <div class="card detail-card mb-3"
+                 id="failureListCard"
+                 style="display:none;">
+                <div class="card-header bg-warning">
+                    Failure Students
+                </div>
+                <div class="card-body"
+                     id="failureList"
+                     style="max-height:250px; overflow:auto;">
+                </div>
+            </div>
+
+            <div class="card detail-card"
+                 id="gradeChartCard"
+                 style="display:none;">
+                <div class="card-header bg-secondary text-white">
+                    Grade Distribution
+                </div>
+                <div class="card-body">
+                    <canvas id="gradeSubjectChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-group mb-4" role="group">
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f1'); loadFeatureF1();">
+        Subject Pass % (Batch)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f2'); loadFeatureF2();">
+        Subject Pass % (Department)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f3'); loadFeatureF3();">
+        Cutoff vs Arrears (Batch)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f4'); loadFeatureF4();">
+        Cutoff vs Arrears (Department)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f5'); loadFeatureF5();">
+        Department Dashboard
+    </button>
+</div>
+
+ 
+</div>
+
+
+
+    
+<script>
+/* =========================================================
+   COMMON HELPERS
+========================================================= */
+const SEM_COLORS = {
+    SEM1: "#e3f2fd",
+    SEM2: "#e8f5e9",
+    SEM3: "#fff3e0",
+    SEM4: "#fce4ec",
+    SEM5: "#ede7f6",
+    SEM6: "#e0f7fa",
+    SEM7: "#f1f8e9",
+    SEM8: "#fbe9e7"
+};
+
+const API = {
+    students: "/students",
+    studentDetails: "/student_details",
+    analytics: "/analytics_data",
+    arrearStatus: "/batch_arrear_status",
+    topBottom: "/batch_top_bottom"
+};
+
+function qs(id){ return document.getElementById(id); }
+
+function post(url, data){
+    return fetch(url,{
+        method:"POST",
+        body:new URLSearchParams(data)
+    }).then(r=>r.json());
+}
+
+function clear(el){ el.innerHTML=""; }
+
+function badge(text, cls="secondary"){
+    return `<span class="badge bg-${cls}">${text}</span>`;
+}
+
+function colors(n){
+    const c=["#3366CC","#DC3912","#FF9900","#109618","#990099","#0099C6","#DD4477","#66AA00","#B82E2E"];
+    return Array.from({length:n},(_,i)=>c[i%c.length]);
+}
+
+/* =========================================================
+   BOX-1 — STUDENT SEARCH & DETAILS
+========================================================= */
+
+let gradeChart, semArrearBar, semArrearLine, gpaChart, rankChart;
+/*
+async function loadStudents(){
+    const sheet=qs("sheetSelect").value;
+    const students=await post(API.students,{sheet});
+    const sel=qs("studentSelect");
+    clear(sel);
+    students.forEach(s=>{
+        const o=document.createElement("option");
+        o.value=s; o.textContent=s;
+        sel.appendChild(o);
+    });
+}
+
+qs("sheetSelect").addEventListener("change", loadStudents);
+loadStudents();
+*/
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    async function loadStudents() {
+        const sheet = document.getElementById("sheetSelect").value;
+        const studentSelect = document.getElementById("studentSelect");
+
+        studentSelect.innerHTML = "<option>Loading...</option>";
+
+        try {
+            const res = await fetch("/students", {
+                method: "POST",
+                body: new URLSearchParams({ sheet })
+            });
+
+            if (!res.ok) {
+                studentSelect.innerHTML = "<option>Error loading students</option>";
+                return;
+            }
+
+            const data = await res.json();
+            console.log("Students loaded:", data);
+
+            studentSelect.innerHTML = "";
+
+            if (!Array.isArray(data) || data.length === 0) {
+                studentSelect.innerHTML = "<option>No students found</option>";
+                return;
+            }
+
+            data.forEach(name => {
+                const opt = document.createElement("option");
+                opt.value = name;
+                opt.textContent = name;
+                studentSelect.appendChild(opt);
+            });
+
+        } catch (err) {
+            console.error("Student load error:", err);
+            studentSelect.innerHTML = "<option>Failed to load</option>";
+        }
+    }
+
+    // Bind event AFTER DOM is ready
+    //document.getElementById("sheetSelect").addEventListener("change", loadStudents);
+    document.getElementById("sheetSelect").addEventListener("change", () => {
+    loadStudents();
+    renderSemesterGrid(data.semester_subjects);
+    renderSemesterTable(data);
+    loadSubjectCodes();
+    });
+    // Initial load
+    loadStudents();
+
+    async function loadSubjectCodes() {
+    const sheet = qs("sheetSelect").value;
+    const subjectSelect = qs("subjectCodeSelect");
+
+    subjectSelect.innerHTML = "<option>Loading...</option>";
+
+    try {
+        const res = await fetch("/subject_codes", {
+            method: "POST",
+            body: new URLSearchParams({ sheet })
+        });
+
+        const data = await res.json();
+        console.log("Subject codes:", data);
+
+        subjectSelect.innerHTML = "";
+
+        if (!Array.isArray(data) || data.length === 0) {
+            subjectSelect.innerHTML = "<option>No subjects</option>";
+            return;
+        }
+
+        data.forEach(code => {
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = code;
+            subjectSelect.appendChild(opt);
+        });
+
+    } catch (err) {
+        console.error("Subject load error:", err);
+        subjectSelect.innerHTML = "<option>Error loading</option>";
+    }
+}
+
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+    loadStudents();
+    loadSubjectCodes();
+});
+
+qs("studentSearch").addEventListener("keyup",()=>{
+    const q=qs("studentSearch").value.toLowerCase();
+    [...qs("studentSelect").options].forEach(o=>{
+        o.hidden=!o.value.toLowerCase().includes(q);
+    });
+});
+
+async function loadStudent() {
+
+    const sheet = qs("sheetSelect").value;
+    const student = qs("studentSelect").value;
+
+    if (!sheet || !student) {
+        alert("Please select batch and student");
+        return;
+    }
+
+    let data;
+    try {
+        data = await post(API.studentDetails, { sheet, student });
+    } catch (e) {
+        alert("Failed to load student data");
+        console.error(e);
+        return;
+    }
+
+    if (!data || !data.details) {
+        alert("Student details not found");
+        return;
+    }
+
+    /* ---------------------------
+       BASIC INFO (ALWAYS WORKS)
+    ---------------------------- */
+    qs("studentCard").style.display = "block";
+    qs("studName").textContent = student;
+    qs("arrears").textContent = data.arrears ?? 0;
+    qs("cgpaBadge").textContent = "CGPA: " + (data.cgpa ?? "--");
+    qs("rankBadge").textContent =
+        `Rank: ${data.rank ?? "--"}/${data.class_size ?? "--"}`;
+
+    if (data.photo_url) {
+        qs("studentPhoto").src = data.photo_url;
+        qs("photoLink").href = data.photo_url;
+    }
+
+    /* ---------------------------
+       DETAILS LISTS (SAFE)
+    ---------------------------- */
+    function safeFill(id, obj) {
+        const el = qs(id);
+        el.innerHTML = "";
+        if (!obj) return;
+        Object.entries(obj).forEach(([k, v]) => {
+            el.innerHTML +=
+                `<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
+        });
+    }
+
+    safeFill("personalDetails", data.sections?.personal);
+    safeFill("parentDetails", data.sections?.parent);
+    safeFill("academicDetails", data.sections?.academic);
+    safeFill("otherDetails", data.sections?.other);
+
+    /* ---------------------------
+       CHARTS (GUARDED)
+    ---------------------------- */
+    try {
+        if (data.grades && Object.keys(data.grades).length > 0) {
+            renderChart(
+                "gradeChart",
+                "bar",
+                Object.keys(data.grades),
+                Object.values(data.grades)
+            );
+        }
+
+        if (data.sem_arrears_labels?.length) {
+            renderChart(
+                "semArrearBarChart",
+                "bar",
+                data.sem_arrears_labels,
+                data.sem_arrears_values,
+                true
+            );
+
+            renderChart(
+                "semArrearLineChart",
+                "line",
+                data.sem_arrears_labels,
+                data.sem_arrears_values,
+                true
+            );
+        }
+
+        if (data.sem_gpa_labels?.length) {
+            renderChart(
+                "gpaTrendChart",
+                "line",
+                data.sem_gpa_labels,
+                data.sem_gpa_values
+            );
+
+            renderChart(
+                "rankTrendChart",
+                "line",
+                data.sem_gpa_labels,
+                data.sem_rank_values,
+                true
+            );
+        }
+    } catch (err) {
+        console.warn("Chart rendering skipped:", err);
+    }
+
+    /* ---------------------------
+       SEMESTER-WISE RESULTS
+    ---------------------------- */
+    const semBox = qs("semesterResults");
+    semBox.innerHTML = "";
+
+    if (data.semester_subjects) {
+        Object.keys(data.semester_subjects).sort().forEach(sem => {
+
+            let block = `
+            <div class="col-md-3">
+                <div class="p-2 rounded"
+                     style="background:${SEM_COLORS[sem] || '#f8f9fa'}">
+                    <h6 class="fw-bold">${sem}</h6>
+                    <ul class="list-group list-group-flush">`;
+
+            data.semester_subjects[sem].forEach(s => {
+                block += `
+                    <li class="list-group-item d-flex justify-content-between">
+                        ${s.subject}
+                        <span class="badge bg-dark">${s.grade}</span>
+                    </li>`;
+            });
+
+            block += `
+                    </ul>
+                </div>
+            </div>`;
+
+            semBox.innerHTML += block;
+        });
+    }
+}
+
+function renderSemesterResults(semResults, semColors) {
+    const container = qs("semesterResults");
+    container.innerHTML = "";
+
+    Object.keys(semResults).sort().forEach(sem => {
+        const col = document.createElement("div");
+        col.className = "col-md-3";
+
+        let html = `
+            <div class="sem-box" style="background:${semColors[sem] || '#f8f9fa'}">
+                <div class="sem-title">${sem}</div>
+        `;
+
+        semResults[sem].forEach(r => {
+            html += `
+                <div>
+                    ${r.subject}
+                    <span class="grade-badge">${r.grade}</span>
+                </div>
+            `;
+        });
+
+        html += "</div>";
+        col.innerHTML = html;
+        container.appendChild(col);
+    });
+}
+
+function renderChart(id,type,labels,values,intY=false){
+    const ctx=qs(id);
+    if(ctx.chart) ctx.chart.destroy();
+    ctx.chart=new Chart(ctx,{
+        type,
+        data:{labels,datasets:[{data:values,backgroundColor:colors(labels.length)}]},
+        options:{
+            plugins:{legend:{display:false}},
+            scales:{y:{beginAtZero:true,ticks:{precision:intY?0:2}}}
+        }
+    });
+}
+
+qs("pdfStudentBtn").onclick=()=>{
+    const s=qs("sheetSelect").value;
+    const n=qs("studentSelect").value;
+    window.open(`/student_report?sheet=${s}&student=${n}`);
+};
+
+/* =========================================================
+   BOX-2 — BATCH ANALYTICS
+========================================================= */
+
+let analyticsChart, arrearChart;
+
+qs("btnAnalytics").onclick = async () => {
+
+    const sheet = qs("sheetSelect").value;
+    const field = qs("analyticsField").value;
+
+    /* =====================================================
+       NEW : ACADEMIC PERFORMANCE ANALYTICS
+    ===================================================== */
+    if (field === "Academic Performance") {
+
+        const data = await post("/academic_performance", { sheet });
+
+        // Hide normal analytics charts
+        qs("analyticsChart").parentElement.style.display = "none";
+        qs("batchArrearChart").parentElement.style.display = "none";
+
+        // Show academic performance container
+        qs("academicPerformanceBox").style.display = "flex";
+
+        qs("highCutoffBox").innerHTML = "";
+        qs("lowCutoffBox").innerHTML = "";
+
+        // LEFT SIDE: Cutoff >= 140 with arrears
+        data.high.forEach(s => {
+            qs("highCutoffBox").innerHTML += `
+                <div class="alert alert-danger shadow-sm">
+                    <b>${s.name}</b> (${s.cutoff})<br>
+                    <span class="badge bg-dark">
+                        Arrears: ${s.arrears.join(", ")}
+                    </span>
+                </div>
+            `;
+        });
+
+        // RIGHT SIDE: Cutoff < 140 with zero arrears
+        data.low.forEach(s => {
+            qs("lowCutoffBox").innerHTML += `
+                <div class="alert alert-success shadow-sm">
+                    <b>${s.name}</b> (${s.cutoff})
+                </div>
+            `;
+        });
+
+        return; // ⛔ stop normal analytics execution
+    }
+
+    /* =====================================================
+       EXISTING ANALYTICS (UNCHANGED)
+    ===================================================== */
+
+    // Ensure charts are visible
+    qs("analyticsChart").parentElement.style.display = "block";
+    qs("batchArrearChart").parentElement.style.display = "block";
+    qs("academicPerformanceBox").style.display = "none";
+
+    const d = await post(API.analytics, { sheet, column: field });
+
+    if (analyticsChart) analyticsChart.destroy();
+    analyticsChart = new Chart(qs("analyticsChart"), {
+        type: "bar",
+        data: {
+            labels: d.labels,
+            datasets: [{
+                data: d.values,
+                backgroundColor: colors(d.labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+
+    const a = await post(API.arrearStatus, { sheet });
+
+    if (arrearChart) arrearChart.destroy();
+    arrearChart = new Chart(qs("batchArrearChart"), {
+        type: "bar",
+        data: {
+            labels: a.labels,
+            datasets: [{
+                data: a.values,
+                backgroundColor: colors(a.labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+    });
+
+    const tb = await post(API.topBottom, { sheet });
+    fillList("topStudentsList", tb.top, "cgpa");
+    fillList("belowStudentsList", tb.bottom, "arrears");
+};
+
+function fillList(id, list, key) {
+    clear(qs(id));
+    list.forEach(x => {
+        qs(id).innerHTML += `
+            <li class="list-group-item d-flex justify-content-between">
+                ${x.name}
+                ${badge(x[key])}
+            </li>`;
+    });
+}
+
+
+/* =========================================================
+   BOX-3 — COURSE ANALYTICS
+========================================================= */
+
+qs("btnBatchWise").onclick=()=>filterStudents("batch");
+qs("btnDeptWise").onclick=()=>filterStudents("dept");
+
+
+/*
+async function filterStudents(mode){
+    qs("studentsResultCard").style.display="block";
+    clear(qs("studentsResult"));
+    const bucket=qs("arrearBucket").value;
+    const [min,max]=bucket==="6-10"?[6,10]:bucket===">10"?[11,99]:[+bucket,+bucket];
+
+    const sheets=[...qs("sheetSelect").options].map(o=>o.value);
+    for(const s of (mode==="batch"?[qs("sheetSelect").value]:sheets)){
+        const studs=await post(API.students,{sheet:s});
+        for(const n of studs){
+            const d=await post(API.studentDetails,{sheet:s,student:n});
+            if(d.arrears>=min && d.arrears<=max){
+                qs("studentsResult").innerHTML+=
+                `<div>${n} ${badge("Arrears "+d.arrears)}</div>`;
+            }
+        }
+    }
+}
+*/
+async function filterStudents(scope) {
+
+    const dept = qs("departmentSelect").value;
+    const bucket = qs("arrearBucket").value;
+    const sheet = qs("sheetSelect").value;
+
+    qs("studentsResultCard").style.display = "block";
+    qs("studentsResult").innerHTML = "Processing...";
+
+    const res = await fetch("/students_by_arrears", {
+        method: "POST",
+        body: new URLSearchParams({
+            scope,
+            sheet,
+            department: dept,
+            bucket
+        })
+    });
+
+    const data = await res.json();
+    qs("studentsResult").innerHTML = "";
+
+    if (!Array.isArray(data) || data.length === 0) {
+        qs("studentsResult").innerHTML =
+            "<div class='text-muted'>No students found</div>";
+        return;
+    }
+
+    data.forEach(s => {
+        qs("studentsResult").innerHTML += `
+            <div class="mb-1">
+                <strong>${s.name}</strong>
+                <span class="badge bg-danger ms-2">
+                    Arrears: ${s.arrears}
+                </span>
+                <span class="badge bg-info ms-2">
+                    ${s.batch}
+                </span>
+            </div>
+        `;
+    });
+}
+
+
+/*qs("btnCoursesArrear").onclick=()=>alert("Course arrear counts handled server-side (already enabled)");*/
+
+/*<script>*/
+/* ===========================
+   COURSES & ITS ARREARS COUNT
+=========================== */
+
+qs("btnCoursesArrear").onclick = async () => {
+
+    const scope = document.querySelector('input[name="courseScope"]:checked').value;
+    const tableDiv = qs("coursesArrearTable");
+    tableDiv.innerHTML = "<div class='text-muted'>Processing...</div>";
+
+    // Helper: extract subject code from column name
+    function getSubjectCode(col){
+        const m = col.match(/Sem\d+_([A-Za-z0-9]+)_/i);
+        return m ? m[1].toUpperCase() : null;
+    }
+
+    // Helper: count arrear grades
+    function isArrear(v){
+        return ["RA","U","FAIL","F","ABSENT"].includes(String(v).toUpperCase().trim());
+    }
+
+    // -----------------------------
+    // BATCH WISE
+    // -----------------------------
+    if(scope === "batch"){
+        const sheet = qs("sheetSelect").value;
+        const students = await post(API.students,{sheet});
+        const subjectCounts = {};
+
+        for(const name of students){
+            const d = await post(API.studentDetails,{sheet,student:name});
+            if(!d || !d.details) continue;
+
+            for(const [col,val] of Object.entries(d.details)){
+                if(!/Sem\d+_.*_\d+$/i.test(col)) continue;
+
+                const code = getSubjectCode(col);
+                if(!code) continue;
+
+                if(isArrear(val)){
+                    subjectCounts[code] = (subjectCounts[code] || 0) + 1;
+                }
+            }
+        }
+
+        // Render table
+        let html = `<table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th>Subject Code</th><th>Arrear Count</th></tr>
+                    </thead><tbody>`;
+        for(const s of Object.keys(subjectCounts).sort()){
+            html += `<tr><td>${s}</td><td>${subjectCounts[s]}</td></tr>`;
+        }
+        html += "</tbody></table>";
+
+        tableDiv.innerHTML = html;
+    }
+
+    // -----------------------------
+    // DEPARTMENT WISE (ALL BATCHES)
+    // -----------------------------
+    else {
+        const sheets = [...qs("sheetSelect").options].map(o=>o.value);
+        const matrix = {}; // subject → batch → count
+
+        for(const sh of sheets){
+            const students = await post(API.students,{sheet:sh});
+            for(const name of students){
+                const d = await post(API.studentDetails,{sheet:sh,student:name});
+                if(!d || !d.details) continue;
+
+                for(const [col,val] of Object.entries(d.details)){
+                    if(!/Sem\d+_.*_\d+$/i.test(col)) continue;
+
+                    const code = getSubjectCode(col);
+                    if(!code) continue;
+
+                    if(isArrear(val)){
+                        matrix[code] ??= {};
+                        matrix[code][sh] = (matrix[code][sh] || 0) + 1;
+                    }
+                }
+            }
+        }
+
+        // Render wide table
+        let html = `<div style="overflow:auto"><table class="table table-sm table-bordered">
+                    <thead><tr><th>Subject</th>`;
+        sheets.forEach(s=>html+=`<th>${s}</th>`);
+        html += "</tr></thead><tbody>";
+
+        Object.keys(matrix).sort().forEach(sub=>{
+            html += `<tr><td>${sub}</td>`;
+            sheets.forEach(s=>{
+                html += `<td>${matrix[sub][s] || 0}</td>`;
+            });
+            html += "</tr>";
+        });
+
+        html += "</tbody></table></div>";
+        tableDiv.innerHTML = html;
+    }
+};
+
+
+qs("btnFailureList").onclick=()=>alert("Failure list rendered via subject analytics");
+
+qs("btnGradeBar").onclick=()=>alert("Grade bar chart rendered via subject analytics");
+async function loadSubjectCodes() {
+    const sheet = qs("sheetSelect").value;
+    const select = qs("subjectCodeSelect");
+
+    select.innerHTML = "<option>Loading...</option>";
+
+    try {
+        const res = await fetch("/subject_codes", {
+            method: "POST",
+            body: new URLSearchParams({ sheet })
+        });
+
+        const data = await res.json();
+        console.log("Loaded subject codes:", data);
+
+        select.innerHTML = "";
+
+        if (!Array.isArray(data) || data.length === 0) {
+            select.innerHTML = "<option>No subjects found</option>";
+            return;
+        }
+
+        data.forEach(code => {
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = code;
+            select.appendChild(opt);
+        });
+
+    } catch (err) {
+        console.error("Subject code load error:", err);
+        select.innerHTML = "<option>Error loading subjects</option>";
+    }
+}
+
+
+/* ===========================
+   SUBJECT FAILURE LIST
+=========================== */
+qs("btnFailureList").onclick = async () => {
+
+    const subject = qs("subjectCodeSelect").value;
+    const scope = document.querySelector('input[name="subjectScope"]:checked').value;
+    const sheet = qs("sheetSelect").value;
+
+    qs("failureListCard").style.display = "block";
+    qs("gradeChartCard").style.display = "none";
+    qs("failureList").innerHTML = "Loading...";
+
+    const res = await fetch("/subject_analytics", {
+        method: "POST",
+        body: new URLSearchParams({ subject, scope, sheet })
+    });
+
+    const data = await res.json();
+    qs("failureList").innerHTML = "";
+
+    if (data.failures.length === 0) {
+        qs("failureList").innerHTML = "<div>No failures</div>";
+        return;
+    }
+
+    data.failures.forEach(f => {
+        qs("failureList").innerHTML +=
+            `<div>${f.name} <span class="badge bg-danger">${f.batch}</span></div>`;
+    });
+};
+
+/* ===========================
+   SUBJECT GRADE BAR CHART
+=========================== */
+let gradeSubjectChart;
+
+qs("btnGradeBar").onclick = async () => {
+
+    const subject = qs("subjectCodeSelect").value;
+    const scope = document.querySelector('input[name="subjectScope"]:checked').value;
+    const sheet = qs("sheetSelect").value;
+
+    qs("gradeChartCard").style.display = "block";
+    qs("failureListCard").style.display = "none";
+
+    const res = await fetch("/subject_analytics", {
+        method: "POST",
+        body: new URLSearchParams({ subject, scope, sheet })
+    });
+
+    const data = await res.json();
+
+    const labels = Object.keys(data.grades);
+    const values = Object.values(data.grades);
+
+    if (gradeSubjectChart) gradeSubjectChart.destroy();
+
+    gradeSubjectChart = new Chart(qs("gradeSubjectChart"), {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: colors(labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } }
+            }
+        }
+    });
+};
+// Auto-load student when PDF mode
+const params = new URLSearchParams(window.location.search);
+if (params.get("pdf") === "1") {
+    setTimeout(() => {
+        loadStudent();
+    }, 1500);
+}
+/*
+function printPagePDF(){
+    window.print();
+}
+*/
+
+function autoSavePDF() {
+
+    const batch = document.getElementById("sheetSelect")?.value || "BATCH";
+    const student = document.getElementById("studentSelect")?.value || "ALL";
+
+    fetch("/autosave_pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            html: document.documentElement.outerHTML,
+            batch: batch,
+            student: student
+        })
+    })
+    .then(res => res.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${batch}_${student}_Performance_Report.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+}
+
+/*new features added from here*/
+async function loadSubjectPass() {
+    const sheet = qs("sheetSelect").value;
+    const data = await post("/subject_pass_percentage",{sheet});
+
+    let html = "<table class='table table-bordered'><tr><th>S.No</th><th>Subject</th><th>Pass %</th></tr>";
+    data.forEach((r,i)=>{
+        html += `<tr><td>${i+1}</td><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+    html += "</table>";
+
+    document.getElementById("coursesArrearTable").innerHTML = html;
+}
+
+async function loadDeptDashboard(){
+    const dept = qs("departmentSelect").value;
+    const data = await post("/dept_dashboard",{department:dept});
+
+    let html="<table class='table table-bordered'><tr><th>Batch</th><th>Strength</th></tr>";
+    data.forEach(d=>{
+        html+=`<tr><td>${d.batch}</td><td>${d.strength}</td></tr>`;
+    });
+    html+="</table>";
+
+    qs("studentsResult").innerHTML = html;
+    qs("studentsResultCard").style.display="block";
+}
+
+/* Correction here*/
+function showNewFeature(key) {
+
+    // Hide all feature sections
+    document.querySelectorAll(".new-feature").forEach(div => {
+        div.style.display = "none";
+    });
+
+    // Show selected feature
+    const target = document.getElementById("feature-" + key);
+    if (target) {
+        target.style.display = "block";
+    }
+}
+
+// Default feature on page load
+document.addEventListener("DOMContentLoaded", () => {
+    showNewFeature("f1");
+});
+
+async function loadFeatureF1() {
+    const sheet = qs("sheetSelect").value;
+    const tbody = qs("f1-body");
+    tbody.innerHTML = "<tr><td colspan='3'>Loading...</td></tr>";
+
+    const data = await post("/subject_pass_percentage", { sheet });
+
+    tbody.innerHTML = "";
+    data.forEach((r, i) => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${r.subject}</td>
+                <td>${r.pass_percent}</td>
+            </tr>`;
+    });
+}
+async function loadFeatureF2() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f2-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/subject_pass_percentage_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Subject</th><th>Pass %</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF3() {
+    const sheet = qs("sheetSelect").value;
+    const div = qs("f3-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_batch", { sheet });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF4() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f4-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF5() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f5-dashboard");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/dept_dashboard", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr>
+            <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
+            <th>Hostellers</th><th>Day Scholars</th><th>FG</th><th>GQ</th><th>MQ</th>
+        </tr>`;
+
+    data.forEach(d => {
+        html += `
+        <tr>
+            <td>${d.batch}</td><td>${d.strength}</td><td>${d.boys}</td>
+            <td>${d.girls}</td><td>${d.hostellers}</td>
+            <td>${d.day_scholars}</td><td>${d.fg}</td>
+            <td>${d.gq}</td><td>${d.mq}</td>
+        </tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+function renderSemesterGrid(semesterSubjects) {
+    const grid = document.getElementById("semesterGrid");
+    grid.innerHTML = "";
+
+    const semesters = Object.keys(semesterSubjects).sort();
+
+    semesters.forEach((sem, index) => {
+
+        const col = document.createElement("div");
+        col.className = "col-md-3 mb-3";
+        col.style.background = SEM_COLORS[sem] || "#f5f5f5";
+        col.style.borderRadius = "8px";
+        col.style.padding = "10px";
+
+        let html = `<h6 class="fw-bold text-center">${sem}</h6>`;
+        html += `<table class="table table-sm table-bordered">`;
+
+        semesterSubjects[sem].forEach(s => {
+            html += `<tr>
+                        <td>${s.subject}</td>
+                        <td class="fw-bold">${s.grade}</td>
+                     </tr>`;
+        });
+
+        html += "</table>";
+        col.innerHTML = html;
+
+        grid.appendChild(col);
+    });
+}
+function renderSemesterTable(data) {
+
+    const container = qs("semesterTable");
+    container.innerHTML = "";
+
+    const semesters = Object.keys(data.semester_results).sort();
+
+    let html = "<table class='table table-bordered'><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<th style="background:${color}">${sem}</th>`;
+    });
+    html += "</tr><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<td style="background:${color}">`;
+
+        data.semester_results[sem].forEach(r => {
+            html += `<div><b>${r.subject}</b> : ${r.grade}</div>`;
+        });
+
+        html += "</td>";
+    });
+
+    html += "</tr></table>";
+    container.innerHTML = html;
+}
+
+
+/* =========================================================
+   END
+========================================================= */
+</script>
+
+</body>
+</html>
