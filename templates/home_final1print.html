@@ -163,6 +163,11 @@
         </div>
 
         <!-- Charts -->
+        <div class="mt-4">
+            <h5 class="fw-bold mb-3">Semester-wise Results</h5>
+            <div id="semesterResults" class="row g-3"></div>
+        </div>
+
         <div class="row g-4">
             <div class="col-md-4">
                 <h6 class="fw-bold">Grade Distribution</h6>
@@ -726,126 +731,148 @@ qs("studentSearch").addEventListener("keyup",()=>{
     });
 });
 
-async function loadStudent(){
-    const sheet=qs("sheetSelect").value;
-    const student=qs("studentSelect").value;
-    const data=await post(API.studentDetails,{sheet,student});
-    if(!data.details) return;
+async function loadStudent() {
 
-    qs("studentCard").style.display="block";
-    qs("studName").textContent=student;
-    qs("arrears").textContent=data.arrears;
-    qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
-    qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
+    const sheet = qs("sheetSelect").value;
+    const student = qs("studentSelect").value;
+
+    if (!sheet || !student) {
+        alert("Please select batch and student");
+        return;
+    }
+
+    let data;
+    try {
+        data = await post(API.studentDetails, { sheet, student });
+    } catch (e) {
+        alert("Failed to load student data");
+        console.error(e);
+        return;
+    }
+
+    if (!data || !data.details) {
+        alert("Student details not found");
+        return;
+    }
+
+    /* ---------------------------
+       BASIC INFO (ALWAYS WORKS)
+    ---------------------------- */
+    qs("studentCard").style.display = "block";
+    qs("studName").textContent = student;
+    qs("arrears").textContent = data.arrears ?? 0;
+    qs("cgpaBadge").textContent = "CGPA: " + (data.cgpa ?? "--");
+    qs("rankBadge").textContent =
+        `Rank: ${data.rank ?? "--"}/${data.class_size ?? "--"}`;
 
     if (data.photo_url) {
         qs("studentPhoto").src = data.photo_url;
         qs("photoLink").href = data.photo_url;
-        qs("studentPhoto").style.display = "block";
-    } else {
-        qs("studentPhoto").style.display = "none";
     }
 
-
-    function fill(list,obj){
-        clear(list);
-        Object.entries(obj).forEach(([k,v])=>{
-            list.innerHTML+=`<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
+    /* ---------------------------
+       DETAILS LISTS (SAFE)
+    ---------------------------- */
+    function safeFill(id, obj) {
+        const el = qs(id);
+        el.innerHTML = "";
+        if (!obj) return;
+        Object.entries(obj).forEach(([k, v]) => {
+            el.innerHTML +=
+                `<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
         });
     }
-    fill(qs("personalDetails"),data.sections.personal);
-    fill(qs("parentDetails"),data.sections.parent);
-    //fill(qs("academicDetails"),data.sections.academic);
-    // ---------- SEMESTER-WISE ACADEMIC DETAILS ----------
-    const acadDiv = qs("academicDetails");
-    acadDiv.innerHTML = "";
-    
-    const semResults = data.semester_results || {};
-    const semColors = data.semester_colors || {};
-    
-    Object.keys(semResults).sort().forEach(sem => {
-    
-        const semBlock = document.createElement("div");
-        semBlock.className = "mb-3 p-3 rounded";
-        semBlock.style.backgroundColor = semColors[sem] || "#f8f9fa";
-    
-        semBlock.innerHTML = `<h6 class="fw-bold">${sem}</h6>`;
-    
-        semResults[sem].forEach(item => {
-            semBlock.innerHTML += `
-                <div class="d-flex justify-content-between border-bottom py-1">
-                    <span>${item.subject}</span>
-                    <span class="badge bg-dark">${item.grade}</span>
-                </div>
-            `;
-        });
 
-        acadDiv.appendChild(semBlock);
-    });
+    safeFill("personalDetails", data.sections?.personal);
+    safeFill("parentDetails", data.sections?.parent);
+    safeFill("academicDetails", data.sections?.academic);
+    safeFill("otherDetails", data.sections?.other);
 
-    
-    fill(qs("otherDetails"),data.sections.other);
+    /* ---------------------------
+       CHARTS (GUARDED)
+    ---------------------------- */
+    try {
+        if (data.grades && Object.keys(data.grades).length > 0) {
+            renderChart(
+                "gradeChart",
+                "bar",
+                Object.keys(data.grades),
+                Object.values(data.grades)
+            );
+        }
 
-    renderChart("gradeChart","bar",
-        Object.keys(data.grades),
-        Object.values(data.grades)
-    );
+        if (data.sem_arrears_labels?.length) {
+            renderChart(
+                "semArrearBarChart",
+                "bar",
+                data.sem_arrears_labels,
+                data.sem_arrears_values,
+                true
+            );
 
-    renderChart("semArrearBarChart","bar",
-        data.sem_arrears_labels,
-        data.sem_arrears_values,true
-    );
+            renderChart(
+                "semArrearLineChart",
+                "line",
+                data.sem_arrears_labels,
+                data.sem_arrears_values,
+                true
+            );
+        }
 
-    renderChart("semArrearLineChart","line",
-        data.sem_arrears_labels,
-        data.sem_arrears_values,true
-    );
+        if (data.sem_gpa_labels?.length) {
+            renderChart(
+                "gpaTrendChart",
+                "line",
+                data.sem_gpa_labels,
+                data.sem_gpa_values
+            );
 
-    renderChart("gpaTrendChart","line",
-        data.sem_gpa_labels,
-        data.sem_gpa_values
-    );
+            renderChart(
+                "rankTrendChart",
+                "line",
+                data.sem_gpa_labels,
+                data.sem_rank_values,
+                true
+            );
+        }
+    } catch (err) {
+        console.warn("Chart rendering skipped:", err);
+    }
 
-    renderChart("rankTrendChart","line",
-        data.sem_gpa_labels,
-        data.sem_rank_values,true
-    );
-    // -------------------------------
-    // SEMESTER-WISE ACADEMIC DISPLAY
-    // -------------------------------
+    /* ---------------------------
+       SEMESTER-WISE RESULTS
+    ---------------------------- */
     const semBox = qs("semesterResults");
     semBox.innerHTML = "";
-    
-    const semData = data.semester_subjects || {};
-    
-    Object.keys(semData).sort().forEach(sem => {
-    
-        let html = `
+
+    if (data.semester_subjects) {
+        Object.keys(data.semester_subjects).sort().forEach(sem => {
+
+            let block = `
             <div class="col-md-3">
-                <div class="p-2 rounded" style="background:${SEM_COLORS[sem] || '#f8f9fa'}">
+                <div class="p-2 rounded"
+                     style="background:${SEM_COLORS[sem] || '#f8f9fa'}">
                     <h6 class="fw-bold">${sem}</h6>
-                    <ul class="list-group list-group-flush">
-        `;
-    
-        semData[sem].forEach(s => {
-            html += `
-                <li class="list-group-item d-flex justify-content-between">
-                    ${s.subject}
-                    <span class="badge bg-dark">${s.grade}</span>
-                </li>`;
-        });
-    
-        html += `
+                    <ul class="list-group list-group-flush">`;
+
+            data.semester_subjects[sem].forEach(s => {
+                block += `
+                    <li class="list-group-item d-flex justify-content-between">
+                        ${s.subject}
+                        <span class="badge bg-dark">${s.grade}</span>
+                    </li>`;
+            });
+
+            block += `
                     </ul>
                 </div>
             </div>`;
-    
-        semBox.innerHTML += html;
-    });
 
-    renderSemesterResults(data.semester_results, data.semester_colors);
-
+            semBox.innerHTML += block;
+        });
+    }
 }
+
 function renderSemesterResults(semResults, semColors) {
     const container = qs("semesterResults");
     container.innerHTML = "";
