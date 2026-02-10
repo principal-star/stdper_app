@@ -296,7 +296,7 @@ def compute_semester_arrears_from_row(row: dict):
 @app.route("/test")
 def test():
     return "Flask is working"
-
+    
 @app.route("/")
 def home():
     sheets = list_sheets()
@@ -369,28 +369,50 @@ def student_details():
 
     row = df_copy[mask].iloc[0].drop(labels="__match__")
     student_data = row.to_dict()
+    # -------------------------------
+    # SEMESTER-WISE SUBJECT GROUPING
+    # -------------------------------
+    semester_subjects = {}
+    
+    sem_pattern = re.compile(r"(sem\d+)_([a-z0-9]+)_\d+", re.I)
+    
+    for col, val in student_data.items():
+        m = sem_pattern.search(str(col))
+        if not m:
+            continue
+    
+        sem = m.group(1).upper()   # SEM1, SEM2...
+        subject = m.group(2).upper()
+        grade = str(val).strip().upper()
+    
+        semester_subjects.setdefault(sem, []).append({
+            "subject": subject,
+            "grade": grade
+        })
+
+    
     # ---------- SEMESTER-WISE RESULT STRUCTURE ----------
-semester_results = {}
-
-for col, val in student_data.items():
-    col_str = str(col)
-
-    # Match: Sem1_CY3151_3, Sem2_MA3251_4 etc
-    m = re.match(r"(Sem\d+)_([A-Za-z0-9]+)_\d+", col_str, re.IGNORECASE)
-    if not m:
-        continue
-
-    sem = m.group(1).upper()     # SEM1
-    subject = m.group(2).upper()
-    grade = str(val).strip()
-
-    if sem not in semester_results:
-        semester_results[sem] = []
-
-    semester_results[sem].append({
-        "subject": subject,
-        "grade": grade
-    })
+    semester_results = {}
+    
+    for col, val in student_data.items():
+        col_str = str(col)
+    
+        # Match: Sem1_CY3151_3, Sem2_MA3251_4 etc
+        m = re.match(r"(Sem\d+)_([A-Za-z0-9]+)_\d+", col_str, re.IGNORECASE)
+        if not m:
+            continue
+    
+        sem = m.group(1).upper()     # SEM1
+        subject = m.group(2).upper()
+        grade = str(val).strip()
+    
+        if sem not in semester_results:
+            semester_results[sem] = []
+    
+        semester_results[sem].append({
+            "subject": subject,
+            "grade": grade
+        })
 
 
     
@@ -398,22 +420,22 @@ for col, val in student_data.items():
     # Semester-wise subject grouping
     # -------------------------------
     semester_subjects = {}
-
+    
     for col, val in student_data.items():
         m = re.search(r"(sem\d+)_([A-Za-z0-9]+)_\d+", str(col).lower())
         if not m:
             continue
-
+    
         sem = m.group(1).upper()       # SEM1, SEM2, ...
         subject = m.group(2).upper()   # MA101, CS204, etc
         grade = str(val).strip().upper()
-
+    
         semester_subjects.setdefault(sem, []).append({
             "subject": subject,
             "grade": grade
         })
 
-
+    
     # photo detection & conversion
     photo_url = None
     for col in df.columns:
@@ -427,26 +449,26 @@ for col, val in student_data.items():
     arrears_count = sum(1 for v in student_data.values() if str(v).strip().upper() in arrear_keywords)
 
     # grade distribution (only semester subject columns)
-
+    
     grades = {}
     for k, v in student_data.items():
         if re.search(r"(sem\d+)_.*_(\d+)$", str(k).lower()):
             g = str(v).strip().upper()
             if g in GRADE_POINT_MAP:
                 grades[g] = grades.get(g, 0) + 1
-
+    
     # semester-wise subjects and grades
     semester_results = {}
-
+    
     for col, val in student_data.items():
         m = re.search(r"(sem\d+)_([A-Za-z0-9]+)", str(col), re.IGNORECASE)
         if not m:
             continue
-
+    
         sem = m.group(1).upper()   # SEM1, SEM2...
         subject = m.group(2).upper()
         grade = str(val).strip().upper()
-
+    
         semester_results.setdefault(sem, []).append({
             "subject": subject,
             "grade": grade
@@ -512,7 +534,8 @@ for col, val in student_data.items():
                 sem_rank_values.append(sorted_list.index(my_gpa) + 1)
             except ValueError:
                 sem_rank_values.append(None)
-response = {
+
+    response = {
         "details": student_data,
         "arrears": arrears_count,
         "grades": grades,
@@ -535,9 +558,9 @@ response = {
         "semester_subjects": semester_subjects,
         "semester_colors": SEM_COLORS,
         "sem_rank_values": sem_rank_values
-}
+    }
 
-return jsonify(response)
+    return jsonify(response)
 
 
 @app.route("/analytics_data", methods=["POST"])
@@ -600,6 +623,46 @@ def analytics_data():
     # Categorical -> value counts
     counts = series.astype(str).str.strip().value_counts()
     return jsonify({"labels": counts.index.tolist(), "values": counts.values.tolist(), "chart_type": "bar"})
+@app.route("/academic_performance", methods=["POST"])
+def academic_performance():
+    sheet = request.form.get("sheet")
+    df = get_sheet_df(sheet)
+
+    name_col = next(c for c in df.columns if "name" in c.lower())
+    cutoff_col = next(c for c in df.columns if "cut" in c.lower())
+
+    sem_cols = [c for c in df.columns if re.search(r"Sem\d+_.*_\d+", c, re.I)]
+    arrear_grades = {"RA","U","UA","F","FAIL","ABSENT"}
+
+    high_cutoff = []
+    low_cutoff = []
+
+    for _, row in df.iterrows():
+        name = str(row[name_col]).strip()
+        cutoff = float(row.get(cutoff_col, 0) or 0)
+
+        arrears = []
+        for c in sem_cols:
+            if str(row[c]).strip().upper() in arrear_grades:
+                arrears.append(c.split("_")[1])
+
+        if cutoff >= 140 and arrears:
+            high_cutoff.append({
+                "name": name,
+                "cutoff": cutoff,
+                "arrears": arrears
+            })
+
+        if cutoff < 140 and not arrears:
+            low_cutoff.append({
+                "name": name,
+                "cutoff": cutoff
+            })
+
+    return jsonify({
+        "high": high_cutoff,
+        "low": low_cutoff
+    })
 
 
 @app.route("/batch_arrear_status", methods=["POST"])
@@ -1239,4 +1302,20 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
