@@ -62,26 +62,13 @@
             transform: rotate(-30deg);
             z-index: -1;
         }
-        .sem-box {
-            border-radius: 6px;
-            padding: 10px;
-            font-size: 14px;
+        #academicDetails h6 {
+            margin-bottom: 10px;
         }
         
-        .sem-title {
-            font-weight: bold;
-            margin-bottom: 6px;
+        #academicDetails .badge {
+            font-size: 0.9rem;
         }
-        
-        .grade-badge {
-            float: right;
-            background: #212529;
-            color: #fff;
-            padding: 2px 8px;
-            border-radius: 5px;
-            font-size: 12px;
-        }
-
     </style>
 </head>
 
@@ -172,7 +159,7 @@
                 <canvas id="semArrearLineChart"></canvas>
             </div>
         </div>
-
+        <div class="row mt-4" id="semesterGrid"></div>
         <div class="row g-4 mt-4">
             <div class="col-md-6">
                 <h6 class="fw-bold">Semester GPA Trend</h6>
@@ -200,22 +187,27 @@
                     <ul class="list-group list-group-flush" id="parentDetails"></ul>
                 </div>
             </div>
-            <div class="card detail-card mt-4">
+            <div class="col-md-4">
+                <div class="card detail-card">
                 <div class="card-header">Other Details</div>
                 <ul class="list-group list-group-flush" id="otherDetails"></ul>
             </div>
-            
+
         </div>
-        <div class="card detail-card mt-3">
-            <div class="card-header">Academic Details</div>
-            <div class="card-body">
-                <div id="semesterResults" class="row g-3"></div>
+
+         <div class="col-md-4">
+            <div class="card detail-card">
+                <div class="card-header">Academic Details</div>
+                <ul class="list-group list-group-flush" id="academicDetails"></ul>
+                <div id="academicDetails"></div>
             </div>
         </div>
+
         <div class="card detail-card mt-4">
             <div class="card-header">Semester-wise Results</div>
             <div class="card-body" id="semesterTable"></div>
         </div>
+
 
 
     </div>
@@ -296,6 +288,48 @@
 <div class="dashboard-box">
 
     <div class="box-title">📦 BOX 3 — Course Analytics</div>
+
+    <!-- FEATURE 1 -->
+    <div id="feature-f1" class="new-feature" style="display:none;">
+        <h6>Batch-wise Subject Pass %</h6>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>S.No</th>
+                    <th>Subject Code</th>
+                    <th>Pass %</th>
+                </tr>
+            </thead>
+            <tbody id="f1-body"></tbody>
+        </table>
+    </div>
+
+    <!-- FEATURE 2 -->
+    <div id="feature-f2" class="new-feature" style="display:none;">
+        <h6>Department-wise Subject Pass %</h6>
+        <div id="f2-table"></div>
+    </div>
+
+    <!-- FEATURE 3 -->
+    <div id="feature-f3" class="new-feature" style="display:none;">
+        <h6>Batch-wise Cutoff vs Arrear Distribution</h6>
+        <div id="f3-table"></div>
+    </div>
+
+    <!-- FEATURE 4 -->
+    <div id="feature-f4" class="new-feature" style="display:none;">
+        <h6>Department-wise Cutoff vs Arrear Distribution</h6>
+        <div id="f4-table"></div>
+    </div>
+
+    <!-- FEATURE 5 -->
+    <div id="feature-f5" class="new-feature" style="display:none;">
+        <h6>Department Dashboard</h6>
+        <div id="f5-dashboard"></div>
+    </div>
+
+
+
 
     <!-- Filters -->
     <div class="row g-3 mb-3">
@@ -469,12 +503,44 @@
         </div>
     </div>
 
+    <div class="btn-group mb-4" role="group">
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f1'); loadFeatureF1();">
+        Subject Pass % (Batch)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f2'); loadFeatureF2();">
+        Subject Pass % (Department)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f3'); loadFeatureF3();">
+        Cutoff vs Arrears (Batch)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f4'); loadFeatureF4();">
+        Cutoff vs Arrears (Department)
+    </button>
+    <button class="btn btn-outline-primary" onclick="showNewFeature('f5'); loadFeatureF5();">
+        Department Dashboard
+    </button>
 </div>
+
+
+</div>
+
+
+
 
 <script>
 /* =========================================================
    COMMON HELPERS
 ========================================================= */
+const SEM_COLORS = {
+    SEM1: "#e3f2fd",
+    SEM2: "#e8f5e9",
+    SEM3: "#fff3e0",
+    SEM4: "#fce4ec",
+    SEM5: "#ede7f6",
+    SEM6: "#e0f7fa",
+    SEM7: "#f1f8e9",
+    SEM8: "#fbe9e7"
+};
 
 const API = {
     students: "/students",
@@ -572,6 +638,8 @@ document.addEventListener("DOMContentLoaded", () => {
     //document.getElementById("sheetSelect").addEventListener("change", loadStudents);
     document.getElementById("sheetSelect").addEventListener("change", () => {
     loadStudents();
+    renderSemesterGrid(data.semester_subjects);
+    renderSemesterTable(data);
     loadSubjectCodes();
     });
     // Initial load
@@ -638,10 +706,14 @@ async function loadStudent(){
     qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
     qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
 
-    if(data.photo_url){
-        qs("studentPhoto").src=data.photo_url;
-        qs("photoLink").href=data.photo_url;
+    if (data.photo_url) {
+        qs("studentPhoto").src = data.photo_url;
+        qs("photoLink").href = data.photo_url;
+        qs("studentPhoto").style.display = "block";
+    } else {
+        qs("studentPhoto").style.display = "none";
     }
+
 
     function fill(list,obj){
         clear(list);
@@ -652,6 +724,35 @@ async function loadStudent(){
     fill(qs("personalDetails"),data.sections.personal);
     fill(qs("parentDetails"),data.sections.parent);
     fill(qs("academicDetails"),data.sections.academic);
+    //fill(qs("academicDetails"),data.sections.academic);
+    // ---------- SEMESTER-WISE ACADEMIC DETAILS ----------
+    const acadDiv = qs("academicDetails");
+    acadDiv.innerHTML = "";
+    
+    const semResults = data.semester_results || {};
+    const semColors = data.semester_colors || {};
+    
+    Object.keys(semResults).sort().forEach(sem => {
+    
+        const semBlock = document.createElement("div");
+        semBlock.className = "mb-3 p-3 rounded";
+        semBlock.style.backgroundColor = semColors[sem] || "#f8f9fa";
+    
+        semBlock.innerHTML = `<h6 class="fw-bold">${sem}</h6>`;
+    
+        semResults[sem].forEach(item => {
+            semBlock.innerHTML += `
+                <div class="d-flex justify-content-between border-bottom py-1">
+                    <span>${item.subject}</span>
+                    <span class="badge bg-dark">${item.grade}</span>
+                </div>
+            `;
+        });
+
+        acadDiv.appendChild(semBlock);
+    });
+
+    
     fill(qs("otherDetails"),data.sections.other);
 
     renderChart("gradeChart","bar",
@@ -1035,8 +1136,6 @@ const params = new URLSearchParams(window.location.search);
 if (params.get("pdf") === "1") {
     setTimeout(() => {
         loadStudent();
-        renderSemesterResults(data.semester_results, data.semester_colors);
-
     }, 1500);
 }
 /*
@@ -1069,31 +1168,177 @@ function autoSavePDF() {
         window.URL.revokeObjectURL(url);
     });
 }
-function renderSemesterResults(semResults, semColors) {
-    const container = qs("semesterResults");
-    container.innerHTML = "";
 
-    Object.keys(semResults).sort().forEach(sem => {
+/*new features added from here*/
+async function loadSubjectPass() {
+    const sheet = qs("sheetSelect").value;
+    const data = await post("/subject_pass_percentage",{sheet});
+
+    let html = "<table class='table table-bordered'><tr><th>S.No</th><th>Subject</th><th>Pass %</th></tr>";
+    data.forEach((r,i)=>{
+        html += `<tr><td>${i+1}</td><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+    html += "</table>";
+
+    document.getElementById("coursesArrearTable").innerHTML = html;
+}
+
+async function loadDeptDashboard(){
+    const dept = qs("departmentSelect").value;
+    const data = await post("/dept_dashboard",{department:dept});
+
+    let html="<table class='table table-bordered'><tr><th>Batch</th><th>Strength</th></tr>";
+    data.forEach(d=>{
+        html+=`<tr><td>${d.batch}</td><td>${d.strength}</td></tr>`;
+    });
+    html+="</table>";
+
+    qs("studentsResult").innerHTML = html;
+    qs("studentsResultCard").style.display="block";
+}
+
+/* Correction here*/
+function showNewFeature(key) {
+
+    // Hide all feature sections
+    document.querySelectorAll(".new-feature").forEach(div => {
+        div.style.display = "none";
+    });
+
+    // Show selected feature
+    const target = document.getElementById("feature-" + key);
+    if (target) {
+        target.style.display = "block";
+    }
+}
+
+// Default feature on page load
+document.addEventListener("DOMContentLoaded", () => {
+    showNewFeature("f1");
+});
+
+async function loadFeatureF1() {
+    const sheet = qs("sheetSelect").value;
+    const tbody = qs("f1-body");
+    tbody.innerHTML = "<tr><td colspan='3'>Loading...</td></tr>";
+
+    const data = await post("/subject_pass_percentage", { sheet });
+
+    tbody.innerHTML = "";
+    data.forEach((r, i) => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${r.subject}</td>
+                <td>${r.pass_percent}</td>
+            </tr>`;
+    });
+}
+async function loadFeatureF2() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f2-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/subject_pass_percentage_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Subject</th><th>Pass %</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF3() {
+    const sheet = qs("sheetSelect").value;
+    const div = qs("f3-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_batch", { sheet });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF4() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f4-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF5() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f5-dashboard");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/dept_dashboard", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr>
+            <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
+            <th>Hostellers</th><th>Day Scholars</th><th>FG</th><th>GQ</th><th>MQ</th>
+        </tr>`;
+
+    data.forEach(d => {
+        html += `
+        <tr>
+            <td>${d.batch}</td><td>${d.strength}</td><td>${d.boys}</td>
+            <td>${d.girls}</td><td>${d.hostellers}</td>
+            <td>${d.day_scholars}</td><td>${d.fg}</td>
+            <td>${d.gq}</td><td>${d.mq}</td>
+        </tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+function renderSemesterGrid(semesterSubjects) {
+    const grid = document.getElementById("semesterGrid");
+    grid.innerHTML = "";
+
+    const semesters = Object.keys(semesterSubjects).sort();
+
+    semesters.forEach((sem, index) => {
+
         const col = document.createElement("div");
-        col.className = "col-md-3";
+        col.className = "col-md-3 mb-3";
+        col.style.background = SEM_COLORS[sem] || "#f5f5f5";
+        col.style.borderRadius = "8px";
+        col.style.padding = "10px";
 
-        let html = `
-            <div class="sem-box" style="background:${semColors[sem] || '#f8f9fa'}">
-                <div class="sem-title">${sem}</div>
-        `;
+        let html = `<h6 class="fw-bold text-center">${sem}</h6>`;
+        html += `<table class="table table-sm table-bordered">`;
 
-        semResults[sem].forEach(r => {
-            html += `
-                <div>
-                    ${r.subject}
-                    <span class="grade-badge">${r.grade}</span>
-                </div>
-            `;
+        semesterSubjects[sem].forEach(s => {
+            html += `<tr>
+                        <td>${s.subject}</td>
+                        <td class="fw-bold">${s.grade}</td>
+                     </tr>`;
         });
 
-        html += "</div>";
+        html += "</table>";
         col.innerHTML = html;
-        container.appendChild(col);
+
+        grid.appendChild(col);
     });
 }
 function renderSemesterTable(data) {
@@ -1125,7 +1370,6 @@ function renderSemesterTable(data) {
     html += "</tr></table>";
     container.innerHTML = html;
 }
-
 
 
 /* =========================================================
