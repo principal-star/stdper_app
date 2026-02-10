@@ -220,12 +220,7 @@
            
         </div>
         
-        <div class="card detail-card mt-3">
-            <div class="card-header">Academic Details</div>
-            <div class="card-body">
-                <div id="semesterResults" class="row g-3"></div>
-            </div>
-        </div>
+
 
         
         <div class="card detail-card mt-4">
@@ -839,38 +834,59 @@ async function loadStudent() {
         console.warn("Chart rendering skipped:", err);
     }
 
-    /* ---------------------------
-       SEMESTER-WISE RESULTS
-    ---------------------------- */
+   /* ==========================
+       SEMESTER-WISE RESULT CARDS
+    ========================== */
     const semBox = qs("semesterResults");
     semBox.innerHTML = "";
-
+    
     if (data.semester_subjects) {
         Object.keys(data.semester_subjects).sort().forEach(sem => {
-
-            let block = `
+            let html = `
             <div class="col-md-3">
                 <div class="p-2 rounded"
                      style="background:${SEM_COLORS[sem] || '#f8f9fa'}">
                     <h6 class="fw-bold">${sem}</h6>
                     <ul class="list-group list-group-flush">`;
-
+    
             data.semester_subjects[sem].forEach(s => {
-                block += `
+                html += `
                     <li class="list-group-item d-flex justify-content-between">
                         ${s.subject}
                         <span class="badge bg-dark">${s.grade}</span>
                     </li>`;
             });
-
-            block += `
-                    </ul>
-                </div>
-            </div>`;
-
-            semBox.innerHTML += block;
+    
+            html += `</ul></div></div>`;
+            semBox.innerHTML += html;
         });
     }
+    if (data.grades)
+    renderSafeChart("gradeChart","bar",
+        Object.keys(data.grades),
+        Object.values(data.grades));
+
+    if (data.sem_arrears_labels)
+        renderSafeChart("semArrearBarChart","bar",
+            data.sem_arrears_labels,
+            data.sem_arrears_values);
+    
+    if (data.sem_arrears_labels)
+        renderSafeChart("semArrearLineChart","line",
+            data.sem_arrears_labels,
+            data.sem_arrears_values);
+    
+    if (data.sem_gpa_labels)
+        renderSafeChart("gpaTrendChart","line",
+            data.sem_gpa_labels,
+            data.sem_gpa_values);
+    
+    if (data.sem_gpa_labels)
+        renderSafeChart("rankTrendChart","line",
+            data.sem_gpa_labels,
+            data.sem_rank_values);
+
+
 }
 
 function renderSemesterResults(semResults, semColors) {
@@ -1566,6 +1582,27 @@ function renderSemesterTable(data) {
 
     html += "</tr></table>";
     container.innerHTML = html;
+}
+function renderSafeChart(id, type, labels, values) {
+    const canvas = qs(id);
+    if (!canvas) return;
+
+    if (canvas.chart) canvas.chart.destroy();
+
+    canvas.chart = new Chart(canvas, {
+        type,
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: colors(labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
 }
 
 
