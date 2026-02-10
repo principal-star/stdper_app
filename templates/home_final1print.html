@@ -212,7 +212,11 @@
                 <div id="semesterResults" class="row g-3"></div>
             </div>
         </div>
-       
+        <div class="card detail-card mt-4">
+            <div class="card-header">Semester-wise Results</div>
+            <div class="card-body" id="semesterTable"></div>
+        </div>
+
 
     </div>
 </div>
@@ -1091,6 +1095,35 @@ function renderSemesterResults(semResults, semColors) {
         col.innerHTML = html;
         container.appendChild(col);
     });
+}
+function renderSemesterTable(data) {
+
+    const container = qs("semesterTable");
+    container.innerHTML = "";
+
+    const semesters = Object.keys(data.semester_results).sort();
+
+    let html = "<table class='table table-bordered'><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<th style="background:${color}">${sem}</th>`;
+    });
+    html += "</tr><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<td style="background:${color}">`;
+
+        data.semester_results[sem].forEach(r => {
+            html += `<div><b>${r.subject}</b> : ${r.grade}</div>`;
+        });
+
+        html += "</td>";
+    });
+
+    html += "</tr></table>";
+    container.innerHTML = html;
 }
 
 
