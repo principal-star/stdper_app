@@ -512,8 +512,7 @@ for col, val in student_data.items():
                 sem_rank_values.append(sorted_list.index(my_gpa) + 1)
             except ValueError:
                 sem_rank_values.append(None)
-
-    response = {
+response = {
         "details": student_data,
         "arrears": arrears_count,
         "grades": grades,
@@ -536,9 +535,9 @@ for col, val in student_data.items():
         "semester_subjects": semester_subjects,
         "semester_colors": SEM_COLORS,
         "sem_rank_values": sem_rank_values
-    }
+}
 
-    return jsonify(response)
+return jsonify(response)
 
 
 @app.route("/analytics_data", methods=["POST"])
@@ -1240,3 +1239,4 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
