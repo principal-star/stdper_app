@@ -86,6 +86,16 @@ GRADE_POINT_MAP = {
     "O": 10, "A+": 9, "A": 8, "B+": 7, "B": 6,
     "RA": 5, "U": 5, "FAIL": 5, "F": 5, "ABSENT": 5
 }
+SEM_COLORS = {
+    "SEM1": "#e3f2fd",
+    "SEM2": "#e8f5e9",
+    "SEM3": "#fff3e0",
+    "SEM4": "#fce4ec",
+    "SEM5": "#ede7f6",
+    "SEM6": "#e0f7fa",
+    "SEM7": "#f1f8e9",
+    "SEM8": "#fbe9e7"
+}
 
 
 def convert_drive_link(url: str):
@@ -348,6 +358,25 @@ def student_details():
 
     row = df_copy[mask].iloc[0].drop(labels="__match__")
     student_data = row.to_dict()
+    # ---------- SEMESTER-WISE RESULTS ----------
+    semester_results = {}
+    
+    for col, val in student_data.items():
+        col_str = str(col)
+    
+        # Match: Sem1_CY3151_3
+        m = re.match(r"(Sem\d+)_([A-Za-z0-9]+)_\d+", col_str, re.I)
+        if not m:
+            continue
+    
+        sem = m.group(1).upper()     # SEM1
+        subject = m.group(2).upper()
+        grade = str(val).strip()
+    
+        semester_results.setdefault(sem, []).append({
+            "subject": subject,
+            "grade": grade
+        })
 
     # photo detection & conversion
     photo_url = None
@@ -434,6 +463,8 @@ def student_details():
         "details": student_data,
         "arrears": arrears_count,
         "grades": grades,
+        "semester_results": semester_results,
+        "semester_colors": SEM_COLORS,
         "sem_arrears_labels": sem_arrears_labels,
         "sem_arrears_values": sem_arrears_values,
         "sections": {
@@ -1153,3 +1184,4 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
