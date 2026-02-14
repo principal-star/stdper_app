@@ -652,7 +652,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Bind event AFTER DOM is ready
     //document.getElementById("sheetSelect").addEventListener("change", loadStudents);
-
+    document.getElementById("sheetSelect").addEventListener("change", () => {
+        loadStudents();
+        renderSemesterGrid(data.semester_subjects);
+        renderSemesterTable(data);
+        loadSubjectCodes();
+    });
     // Initial load
     loadStudents();
 
