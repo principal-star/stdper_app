@@ -654,8 +654,10 @@ document.addEventListener("DOMContentLoaded", () => {
     //document.getElementById("sheetSelect").addEventListener("change", loadStudents);
     document.getElementById("sheetSelect").addEventListener("change", () => {
         loadStudents();
-        renderSemesterGrid(data.semester_subjects);
-        renderSemesterTable(data);
+        //renderSemesterGrid(data.semester_subjects);
+        if (data.semester_subjects)
+            renderSemesterGrid(data.semester_subjects);
+
         loadSubjectCodes();
     });
     // Initial load
