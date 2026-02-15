@@ -1041,27 +1041,6 @@ function fillList(id, list, key) {
 qs("btnBatchWise").onclick=()=>filterStudents("batch");
 qs("btnDeptWise").onclick=()=>filterStudents("dept");
 
-
-/*
-async function filterStudents(mode){
-    qs("studentsResultCard").style.display="block";
-    clear(qs("studentsResult"));
-    const bucket=qs("arrearBucket").value;
-    const [min,max]=bucket==="6-10"?[6,10]:bucket===">10"?[11,99]:[+bucket,+bucket];
-
-    const sheets=[...qs("sheetSelect").options].map(o=>o.value);
-    for(const s of (mode==="batch"?[qs("sheetSelect").value]:sheets)){
-        const studs=await post(API.students,{sheet:s});
-        for(const n of studs){
-            const d=await post(API.studentDetails,{sheet:s,student:n});
-            if(d.arrears>=min && d.arrears<=max){
-                qs("studentsResult").innerHTML+=
-                `<div>${n} ${badge("Arrears "+d.arrears)}</div>`;
-            }
-        }
-    }
-}
-*/
 async function filterStudents(scope) {
 
     const dept = qs("departmentSelect").value;
