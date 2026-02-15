@@ -741,6 +741,518 @@ data:{labels:Object.keys(obj),datasets:[{data:Object.values(obj),backgroundColor
 options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
 });
 }
+/* =========================================================
+   BOX-3 — COURSE ANALYTICS
+========================================================= */
+
+qs("btnBatchWise").onclick=()=>filterStudents("batch");
+qs("btnDeptWise").onclick=()=>filterStudents("dept");
+
+async function filterStudents(scope) {
+
+    const dept = qs("departmentSelect").value;
+    const bucket = qs("arrearBucket").value;
+    const sheet = qs("sheetSelect").value;
+
+    qs("studentsResultCard").style.display = "block";
+    qs("studentsResult").innerHTML = "Processing...";
+
+    const res = await fetch("/students_by_arrears", {
+        method: "POST",
+        body: new URLSearchParams({
+            scope,
+            sheet,
+            department: dept,
+            bucket
+        })
+    });
+
+    const data = await res.json();
+    qs("studentsResult").innerHTML = "";
+
+    if (!Array.isArray(data) || data.length === 0) {
+        qs("studentsResult").innerHTML =
+            "<div class='text-muted'>No students found</div>";
+        return;
+    }
+
+    data.forEach(s => {
+        qs("studentsResult").innerHTML += `
+            <div class="mb-1">
+                <strong>${s.name}</strong>
+                <span class="badge bg-danger ms-2">
+                    Arrears: ${s.arrears}
+                </span>
+                <span class="badge bg-info ms-2">
+                    ${s.batch}
+                </span>
+            </div>
+        `;
+    });
+}
+
+
+/*qs("btnCoursesArrear").onclick=()=>alert("Course arrear counts handled server-side (already enabled)");*/
+
+/*<script>*/
+/* ===========================
+   COURSES & ITS ARREARS COUNT
+=========================== */
+
+qs("btnCoursesArrear").onclick = async () => {
+
+    const scope = document.querySelector('input[name="courseScope"]:checked').value;
+    const tableDiv = qs("coursesArrearTable");
+    tableDiv.innerHTML = "<div class='text-muted'>Processing...</div>";
+
+    // Helper: extract subject code from column name
+    function getSubjectCode(col){
+        const m = col.match(/Sem\d+_([A-Za-z0-9]+)_/i);
+        return m ? m[1].toUpperCase() : null;
+    }
+
+    // Helper: count arrear grades
+    function isArrear(v){
+        return ["RA","U","FAIL","F","ABSENT"].includes(String(v).toUpperCase().trim());
+    }
+
+    // -----------------------------
+    // BATCH WISE
+    // -----------------------------
+    if(scope === "batch"){
+        const sheet = qs("sheetSelect").value;
+        const students = await post(API.students,{sheet});
+        const subjectCounts = {};
+
+        for(const name of students){
+            const d = await post(API.studentDetails,{sheet,student:name});
+            if(!d || !d.details) continue;
+
+            for(const [col,val] of Object.entries(d.details)){
+                if(!/Sem\d+_.*_\d+$/i.test(col)) continue;
+
+                const code = getSubjectCode(col);
+                if(!code) continue;
+
+                if(isArrear(val)){
+                    subjectCounts[code] = (subjectCounts[code] || 0) + 1;
+                }
+            }
+        }
+
+        // Render table
+        let html = `<table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th>Subject Code</th><th>Arrear Count</th></tr>
+                    </thead><tbody>`;
+        for(const s of Object.keys(subjectCounts).sort()){
+            html += `<tr><td>${s}</td><td>${subjectCounts[s]}</td></tr>`;
+        }
+        html += "</tbody></table>";
+
+        tableDiv.innerHTML = html;
+    }
+
+    // -----------------------------
+    // DEPARTMENT WISE (ALL BATCHES)
+    // -----------------------------
+    else {
+        const sheets = [...qs("sheetSelect").options].map(o=>o.value);
+        const matrix = {}; // subject → batch → count
+
+        for(const sh of sheets){
+            const students = await post(API.students,{sheet:sh});
+            for(const name of students){
+                const d = await post(API.studentDetails,{sheet:sh,student:name});
+                if(!d || !d.details) continue;
+
+                for(const [col,val] of Object.entries(d.details)){
+                    if(!/Sem\d+_.*_\d+$/i.test(col)) continue;
+
+                    const code = getSubjectCode(col);
+                    if(!code) continue;
+
+                    if(isArrear(val)){
+                        matrix[code] ??= {};
+                        matrix[code][sh] = (matrix[code][sh] || 0) + 1;
+                    }
+                }
+            }
+        }
+
+        // Render wide table
+        let html = `<div style="overflow:auto"><table class="table table-sm table-bordered">
+                    <thead><tr><th>Subject</th>`;
+        sheets.forEach(s=>html+=`<th>${s}</th>`);
+        html += "</tr></thead><tbody>";
+
+        Object.keys(matrix).sort().forEach(sub=>{
+            html += `<tr><td>${sub}</td>`;
+            sheets.forEach(s=>{
+                html += `<td>${matrix[sub][s] || 0}</td>`;
+            });
+            html += "</tr>";
+        });
+
+        html += "</tbody></table></div>";
+        tableDiv.innerHTML = html;
+    }
+};
+
+
+qs("btnFailureList").onclick=()=>alert("Failure list rendered via subject analytics");
+
+qs("btnGradeBar").onclick=()=>alert("Grade bar chart rendered via subject analytics");
+async function loadSubjectCodes() {
+    const sheet = qs("sheetSelect").value;
+    const select = qs("subjectCodeSelect");
+
+    select.innerHTML = "<option>Loading...</option>";
+
+    try {
+        const res = await fetch("/subject_codes", {
+            method: "POST",
+            body: new URLSearchParams({ sheet })
+        });
+
+        const data = await res.json();
+        console.log("Loaded subject codes:", data);
+
+        select.innerHTML = "";
+
+        if (!Array.isArray(data) || data.length === 0) {
+            select.innerHTML = "<option>No subjects found</option>";
+            return;
+        }
+
+        data.forEach(code => {
+            const opt = document.createElement("option");
+            opt.value = code;
+            opt.textContent = code;
+            select.appendChild(opt);
+        });
+
+    } catch (err) {
+        console.error("Subject code load error:", err);
+        select.innerHTML = "<option>Error loading subjects</option>";
+    }
+}
+
+
+/* ===========================
+   SUBJECT FAILURE LIST
+=========================== */
+qs("btnFailureList").onclick = async () => {
+
+    const subject = qs("subjectCodeSelect").value;
+    const scope = document.querySelector('input[name="subjectScope"]:checked').value;
+    const sheet = qs("sheetSelect").value;
+
+    qs("failureListCard").style.display = "block";
+    qs("gradeChartCard").style.display = "none";
+    qs("failureList").innerHTML = "Loading...";
+
+    const res = await fetch("/subject_analytics", {
+        method: "POST",
+        body: new URLSearchParams({ subject, scope, sheet })
+    });
+
+    const data = await res.json();
+    qs("failureList").innerHTML = "";
+
+    if (data.failures.length === 0) {
+        qs("failureList").innerHTML = "<div>No failures</div>";
+        return;
+    }
+
+    data.failures.forEach(f => {
+        qs("failureList").innerHTML +=
+            `<div>${f.name} <span class="badge bg-danger">${f.batch}</span></div>`;
+    });
+};
+
+/* ===========================
+   SUBJECT GRADE BAR CHART
+=========================== */
+let gradeSubjectChart;
+
+qs("btnGradeBar").onclick = async () => {
+
+    const subject = qs("subjectCodeSelect").value;
+    const scope = document.querySelector('input[name="subjectScope"]:checked').value;
+    const sheet = qs("sheetSelect").value;
+
+    qs("gradeChartCard").style.display = "block";
+    qs("failureListCard").style.display = "none";
+
+    const res = await fetch("/subject_analytics", {
+        method: "POST",
+        body: new URLSearchParams({ subject, scope, sheet })
+    });
+
+    const data = await res.json();
+
+    const labels = Object.keys(data.grades);
+    const values = Object.values(data.grades);
+
+    if (gradeSubjectChart) gradeSubjectChart.destroy();
+
+    gradeSubjectChart = new Chart(qs("gradeSubjectChart"), {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [{
+                data: values,
+                backgroundColor: colors(labels.length)
+            }]
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, ticks: { precision: 0 } }
+            }
+        }
+    });
+};
+// Auto-load student when PDF mode
+const params = new URLSearchParams(window.location.search);
+if (params.get("pdf") === "1") {
+    setTimeout(() => {
+        loadStudent();
+    }, 1500);
+}
+/*
+function printPagePDF(){
+    window.print();
+}
+*/
+
+function autoSavePDF() {
+
+    const batch = document.getElementById("sheetSelect")?.value || "BATCH";
+    const student = document.getElementById("studentSelect")?.value || "ALL";
+
+    fetch("/autosave_pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            html: document.documentElement.outerHTML,
+            batch: batch,
+            student: student
+        })
+    })
+    .then(res => res.blob())
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${batch}_${student}_Performance_Report.pdf`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+}
+
+/*new features added from here*/
+async function loadSubjectPass() {
+    const sheet = qs("sheetSelect").value;
+    const data = await post("/subject_pass_percentage",{sheet});
+
+    let html = "<table class='table table-bordered'><tr><th>S.No</th><th>Subject</th><th>Pass %</th></tr>";
+    data.forEach((r,i)=>{
+        html += `<tr><td>${i+1}</td><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+    html += "</table>";
+
+    document.getElementById("coursesArrearTable").innerHTML = html;
+}
+
+async function loadDeptDashboard(){
+    const dept = qs("departmentSelect").value;
+    const data = await post("/dept_dashboard",{department:dept});
+
+    let html="<table class='table table-bordered'><tr><th>Batch</th><th>Strength</th></tr>";
+    data.forEach(d=>{
+        html+=`<tr><td>${d.batch}</td><td>${d.strength}</td></tr>`;
+    });
+    html+="</table>";
+
+    qs("studentsResult").innerHTML = html;
+    qs("studentsResultCard").style.display="block";
+}
+
+/* Correction here*/
+function showNewFeature(key) {
+
+    // Hide all feature sections
+    document.querySelectorAll(".new-feature").forEach(div => {
+        div.style.display = "none";
+    });
+
+    // Show selected feature
+    const target = document.getElementById("feature-" + key);
+    if (target) {
+        target.style.display = "block";
+    }
+}
+
+// Default feature on page load
+document.addEventListener("DOMContentLoaded", () => {
+    showNewFeature("f1");
+});
+
+async function loadFeatureF1() {
+    const sheet = qs("sheetSelect").value;
+    const tbody = qs("f1-body");
+    tbody.innerHTML = "<tr><td colspan='3'>Loading...</td></tr>";
+
+    const data = await post("/subject_pass_percentage", { sheet });
+
+    tbody.innerHTML = "";
+    data.forEach((r, i) => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${i + 1}</td>
+                <td>${r.subject}</td>
+                <td>${r.pass_percent}</td>
+            </tr>`;
+    });
+}
+async function loadFeatureF2() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f2-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/subject_pass_percentage_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Subject</th><th>Pass %</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF3() {
+    const sheet = qs("sheetSelect").value;
+    const div = qs("f3-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_batch", { sheet });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF4() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f4-table");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/cutoff_vs_arrears_dept", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+
+    data.forEach(r => {
+        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+async function loadFeatureF5() {
+    const dept = qs("departmentSelect").value;
+    const div = qs("f5-dashboard");
+    div.innerHTML = "Loading...";
+
+    const data = await post("/dept_dashboard", { department: dept });
+
+    let html = `<table class="table table-bordered">
+        <tr>
+            <th>Batch</th><th>Strength</th><th>Boys</th><th>Girls</th>
+            <th>Hostellers</th><th>Day Scholars</th><th>FG</th><th>GQ</th><th>MQ</th>
+        </tr>`;
+
+    data.forEach(d => {
+        html += `
+        <tr>
+            <td>${d.batch}</td><td>${d.strength}</td><td>${d.boys}</td>
+            <td>${d.girls}</td><td>${d.hostellers}</td>
+            <td>${d.day_scholars}</td><td>${d.fg}</td>
+            <td>${d.gq}</td><td>${d.mq}</td>
+        </tr>`;
+    });
+
+    html += "</table>";
+    div.innerHTML = html;
+}
+function renderSemesterGrid(semesterSubjects) {
+    const grid = document.getElementById("semesterGrid");
+    grid.innerHTML = "";
+
+    const semesters = Object.keys(semesterSubjects).sort();
+
+    semesters.forEach((sem, index) => {
+
+        const col = document.createElement("div");
+        col.className = "col-md-3 mb-3";
+        col.style.background = SEM_COLORS[sem] || "#f5f5f5";
+        col.style.borderRadius = "8px";
+        col.style.padding = "10px";
+
+        let html = `<h6 class="fw-bold text-center">${sem}</h6>`;
+        html += `<table class="table table-sm table-bordered">`;
+
+        semesterSubjects[sem].forEach(s => {
+            html += `<tr>
+                        <td>${s.subject}</td>
+                        <td class="fw-bold">${s.grade}</td>
+                     </tr>`;
+        });
+
+        html += "</table>";
+        col.innerHTML = html;
+
+        grid.appendChild(col);
+    });
+}
+function renderSemesterTable(data) {
+
+    const container = qs("semesterTable");
+    container.innerHTML = "";
+
+    const semesters = Object.keys(data.semester_results).sort();
+
+    let html = "<table class='table table-bordered'><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<th style="background:${color}">${sem}</th>`;
+    });
+    html += "</tr><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<td style="background:${color}">`;
+
+        data.semester_results[sem].forEach(r => {
+            html += `<div><b>${r.subject}</b> : ${r.grade}</div>`;
+        });
+
+        html += "</td>";
+    });
+
+    html += "</tr></table>";
+    container.innerHTML = html;
+}
 
     
 </script> 
