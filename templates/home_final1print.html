@@ -556,99 +556,196 @@
  
 </div>
 
+<script>
+/* ================= COMMON ================= */
+const API = {
+    students: "/students",
+    studentDetails: "/student_details",
+    analytics: "/analytics_data",
+    arrearStatus: "/batch_arrear_status",
+    topBottom: "/batch_top_bottom"
+};
+
+const SEM_COLORS={
+SEM1:"#e3f2fd",SEM2:"#e8f5e9",SEM3:"#fff3e0",SEM4:"#fce4ec",
+SEM5:"#ede7f6",SEM6:"#e0f7fa",SEM7:"#f1f8e9",SEM8:"#fbe9e7"
+};
+
+const qs=id=>document.getElementById(id);
+
+async function post(url,data){
+    const r=await fetch(url,{method:"POST",body:new URLSearchParams(data)});
+    return r.json();
+}
+
+function colors(n){
+    const c=["#3366CC","#DC3912","#FF9900","#109618","#990099","#0099C6"];
+    return Array.from({length:n},(_,i)=>c[i%c.length]);
+}
+
+/* ================= PAGE LOAD ================= */
+window.onload=()=>{
+    loadStudents();
+    loadSubjectCodes();
+
+    qs("sheetSelect").onchange=()=>{
+        loadStudents();
+        loadSubjectCodes();
+    };
+
+    qs("studentSearch").onkeyup=()=>{
+        const q=qs("studentSearch").value.toLowerCase();
+        [...qs("studentSelect").options].forEach(o=>{
+            o.hidden=!o.value.toLowerCase().includes(q);
+        });
+    };
+
+    qs("btnAnalytics").onclick=generateAnalytics;
+    qs("btnCoursesArrear").onclick=loadCourseArrears;
+    qs("btnFailureList").onclick=loadFailureList;
+    qs("btnGradeBar").onclick=loadGradeChart;
+};
+
+/* ================= STUDENTS ================= */
+async function loadStudents(){
+    const sheet=qs("sheetSelect").value;
+    const data=await post(API.students,{sheet});
+    qs("studentSelect").innerHTML="";
+    data.forEach(s=>{
+        qs("studentSelect").innerHTML+=`<option>${s}</option>`;
+    });
+}
+
+async function loadSubjectCodes(){
+    const sheet=qs("sheetSelect").value;
+    const data=await post("/subject_codes",{sheet});
+    qs("subjectCodeSelect").innerHTML="";
+    data.forEach(s=>{
+        qs("subjectCodeSelect").innerHTML+=`<option>${s}</option>`;
+    });
+}
+
+/* ================= LOAD STUDENT ================= */
+async function loadStudent(){
+
+const sheet=qs("sheetSelect").value;
+const student=qs("studentSelect").value;
+const data=await post(API.studentDetails,{sheet,student});
+
+qs("studentCard").style.display="block";
+qs("studName").textContent=student;
+qs("arrears").textContent=data.arrears;
+qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
+qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
+
+if(data.photo_url) qs("studentPhoto").src=data.photo_url;
+
+/* Semester Cards */
+qs("semesterResults").innerHTML="";
+Object.keys(data.semester_subjects||{}).forEach(sem=>{
+let html=`<div class="col-md-3">
+<div class="p-2 rounded" style="background:${SEM_COLORS[sem]}">
+<h6>${sem}</h6>`;
+data.semester_subjects[sem].forEach(s=>{
+html+=`<div class="d-flex justify-content-between">
+<span>${s.subject}</span>
+<span class="badge bg-dark">${s.grade}</span></div>`;
+});
+html+="</div></div>";
+qs("semesterResults").innerHTML+=html;
+});
+
+/* Charts */
+drawChart("gradeChart","bar",data.grades);
+drawChart("semArrearBarChart","bar",zip(data.sem_arrears_labels,data.sem_arrears_values));
+drawChart("semArrearLineChart","line",zip(data.sem_arrears_labels,data.sem_arrears_values));
+drawChart("gpaTrendChart","line",zip(data.sem_gpa_labels,data.sem_gpa_values));
+drawChart("rankTrendChart","line",zip(data.sem_gpa_labels,data.sem_rank_values));
+}
+
+/* ================= ANALYTICS ================= */
+async function generateAnalytics(){
+
+const sheet=qs("sheetSelect").value;
+const field=qs("analyticsField").value;
+
+/* Academic Performance Special */
+if(field==="Academic Performance"){
+const d=await post("/academic_performance",{sheet});
+qs("academicPerformanceBox").style.display="flex";
+qs("highCutoffBox").innerHTML="";
+qs("lowCutoffBox").innerHTML="";
+d.high.forEach(s=>qs("highCutoffBox").innerHTML+=
+`<div class="alert alert-danger"><b>${s.name}</b> (${s.cutoff})<br>${s.arrears.join(", ")}</div>`);
+d.low.forEach(s=>qs("lowCutoffBox").innerHTML+=
+`<div class="alert alert-success"><b>${s.name}</b> (${s.cutoff})</div>`);
+return;
+}
+
+const d=await post(API.analytics,{sheet,column:field});
+drawChart("analyticsChart","bar",zip(d.labels,d.values));
+
+const a=await post(API.arrearStatus,{sheet});
+drawChart("batchArrearChart","bar",zip(a.labels,a.values));
+
+const tb=await post(API.topBottom,{sheet});
+fillList("topStudentsList",tb.top,"cgpa");
+fillList("belowStudentsList",tb.bottom,"arrears");
+}
+
+/* ================= COURSE ARREARS ================= */
+async function loadCourseArrears(){
+const scope=document.querySelector('input[name="courseScope"]:checked').value;
+const sheet=qs("sheetSelect").value;
+const data=await post("/course_arrears",{scope,sheet});
+qs("coursesArrearTable").innerHTML=data.html;
+}
+
+/* ================= SUBJECT ANALYTICS ================= */
+async function loadFailureList(){
+const subject=qs("subjectCodeSelect").value;
+const scope=document.querySelector('input[name="subjectScope"]:checked').value;
+const sheet=qs("sheetSelect").value;
+const d=await post("/subject_analytics",{subject,scope,sheet});
+qs("failureListCard").style.display="block";
+qs("failureList").innerHTML=d.failures.map(f=>`${f.name} (${f.batch})`).join("<br>");
+}
+
+async function loadGradeChart(){
+const subject=qs("subjectCodeSelect").value;
+const scope=document.querySelector('input[name="subjectScope"]:checked').value;
+const sheet=qs("sheetSelect").value;
+const d=await post("/subject_analytics",{subject,scope,sheet});
+drawChart("gradeSubjectChart","bar",d.grades);
+}
+
+/* ================= HELPERS ================= */
+function fillList(id,list,key){
+qs(id).innerHTML=list.map(x=>`<li class="list-group-item">${x.name} <span class="badge bg-secondary">${x[key]}</span></li>`).join("");
+}
+
+function zip(l,v){
+if(!l||!v)return{};
+let o={};
+l.forEach((k,i)=>o[k]=v[i]);
+return o;
+}
+
+function drawChart(id,type,obj){
+if(!obj)return;
+const ctx=qs(id);
+if(ctx.chart)ctx.chart.destroy();
+ctx.chart=new Chart(ctx,{
+type,
+data:{labels:Object.keys(obj),datasets:[{data:Object.values(obj),backgroundColor:colors(Object.keys(obj).length)}]},
+options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+});
+}
+</script>
 
 
     
-<script>
-/* ================= COMMON HELPERS ================= */
-const SEM_COLORS={SEM1:"#e3f2fd",SEM2:"#e8f5e9",SEM3:"#fff3e0",SEM4:"#fce4ec",SEM5:"#ede7f6",SEM6:"#e0f7fa",SEM7:"#f1f8e9",SEM8:"#fbe9e7"};
-const API={students:"/students",studentDetails:"/student_details"};
-const qs=id=>document.getElementById(id);
-const post=(u,d)=>fetch(u,{method:"POST",body:new URLSearchParams(d)}).then(r=>r.json());
 
-/* ================= LOAD STUDENTS ================= */
-async function loadStudents(){
- const sheet=qs("sheetSelect").value;
- const sel=qs("studentSelect");
- sel.innerHTML="<option>Loading...</option>";
- try{
-  const data=await post(API.students,{sheet});
-  sel.innerHTML="";
-  data.forEach(n=>sel.innerHTML+=`<option value="${n}">${n}</option>`);
- }catch(e){sel.innerHTML="<option>Error</option>";}
-}
-
-/* ================= SUBJECT CODES ================= */
-async function loadSubjectCodes(){
- const sheet=qs("sheetSelect").value;
- const sel=qs("subjectCodeSelect");
- sel.innerHTML="<option>Loading...</option>";
- try{
-  const data=await post("/subject_codes",{sheet});
-  sel.innerHTML="";
-  data.forEach(c=>sel.innerHTML+=`<option value="${c}">${c}</option>`);
- }catch{sel.innerHTML="<option>Error</option>";}
-}
-
-/* ================= INITIAL LOAD ================= */
-document.addEventListener("DOMContentLoaded",()=>{
- loadStudents();
- loadSubjectCodes();
- qs("sheetSelect").addEventListener("change",()=>{loadStudents();loadSubjectCodes();});
-});
-
-/* ================= LOAD STUDENT DETAILS ================= */
-async function loadStudent(){
- const sheet=qs("sheetSelect").value;
- const student=qs("studentSelect").value;
- if(!student) return alert("Select student");
- const data=await post(API.studentDetails,{sheet,student});
- if(!data) return alert("No data");
-
- qs("studentCard").style.display="block";
- qs("studName").textContent=student;
- qs("arrears").textContent=data.arrears||0;
- qs("cgpaBadge").textContent="CGPA: "+(data.cgpa||"--");
- qs("rankBadge").textContent=`Rank: ${data.rank||"--"}/${data.class_size||"--"}`;
-
- /* PERSONAL SECTIONS */
- function fill(id,obj){qs(id).innerHTML="";if(!obj)return;Object.entries(obj).forEach(([k,v])=>qs(id).innerHTML+=`<li class='list-group-item'><b>${k}</b>: ${v}</li>`);}
- fill("personalDetails",data.sections?.personal);
- fill("parentDetails",data.sections?.parent);
- fill("otherDetails",data.sections?.other);
-
- /* SEMESTER CARDS */
- renderSemesterGrid(data.semester_subjects);
-
- /* CHARTS */
- renderSafeChart("gradeChart","bar",Object.keys(data.grades||{}),Object.values(data.grades||{}));
- renderSafeChart("semArrearBarChart","bar",data.sem_arrears_labels,data.sem_arrears_values);
- renderSafeChart("semArrearLineChart","line",data.sem_arrears_labels,data.sem_arrears_values);
- renderSafeChart("gpaTrendChart","line",data.sem_gpa_labels,data.sem_gpa_values);
- renderSafeChart("rankTrendChart","line",data.sem_gpa_labels,data.sem_rank_values);
-}
-
-/* ================= SEMESTER GRID ================= */
-function renderSemesterGrid(sem){
- const box=qs("semesterResults");
- box.innerHTML="";
- if(!sem) return;
- Object.keys(sem).sort().forEach(s=>{
-  let html=`<div class='col-md-3'><div class='p-2 rounded' style='background:${SEM_COLORS[s]||"#f8f9fa"}'><h6 class='fw-bold text-center'>${s}</h6>`;
-  sem[s].forEach(r=>html+=`<div class='d-flex justify-content-between border-bottom py-1'><span>${r.subject}</span><span class='badge bg-dark'>${r.grade}</span></div>`);
-  html+="</div></div>"; box.innerHTML+=html;
- });
-}
-
-/* ================= SAFE CHART ================= */
-function renderSafeChart(id,type,labels,values){
- if(!labels||!values||!labels.length) return;
- const ctx=qs(id);
- if(ctx.chart) ctx.chart.destroy();
- ctx.chart=new Chart(ctx,{type,data:{labels,datasets:[{data:values.map(v=>v||0)}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
-}
-
-</script>
 
 </body>
 </html>
