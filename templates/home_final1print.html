@@ -642,17 +642,62 @@ if(data.photo_url){
         qs("photoLink").href=data.photo_url;
     }
 
-    function fill(list,obj){
-        clear(list);
-        Object.entries(obj).forEach(([k,v])=>{
-            list.innerHTML+=`<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
-        });
-    }
-    fill(qs("personalDetails"),data.sections.personal);
-    fill(qs("parentDetails"),data.sections.parent);
-    //fill(qs("academicDetails"),data.sections.academic);
-    fill(qs("otherDetails"),data.sections.other);
+function fill(list,obj){
+    clear(list);
+    Object.entries(obj).forEach(([k,v])=>{
+        list.innerHTML+=`<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
+    });
+}
+fill(qs("personalDetails"),data.sections.personal);
+fill(qs("parentDetails"),data.sections.parent);
+//fill(qs("academicDetails"),data.sections.academic);
+fill(qs("otherDetails"),data.sections.other);
+    renderChart("gradeChart","bar",
+        Object.keys(data.grades),
+        Object.values(data.grades)
+    );
 
+    renderChart("semArrearBarChart","bar",
+        data.sem_arrears_labels,
+        data.sem_arrears_values,true
+    );
+
+    renderChart("semArrearLineChart","line",
+        data.sem_arrears_labels,
+        data.sem_arrears_values,true
+    );
+
+    renderChart("gpaTrendChart","line",
+        data.sem_gpa_labels,
+        data.sem_gpa_values
+    );
+
+    renderChart("rankTrendChart","line",
+        data.sem_gpa_labels,
+        data.sem_rank_values,true
+    );
+}
+
+function renderChart(id,type,labels,values,intY=false){
+    const ctx=qs(id);
+    if(ctx.chart) ctx.chart.destroy();
+    ctx.chart=new Chart(ctx,{
+        type,
+        data:{labels,datasets:[{data:values,backgroundColor:colors(labels.length)}]},
+        options:{
+            plugins:{legend:{display:false}},
+            scales:{y:{beginAtZero:true,ticks:{precision:intY?0:2}}}
+        }
+    });
+}
+
+qs("pdfStudentBtn").onclick=()=>{
+    const s=qs("sheetSelect").value;
+    const n=qs("studentSelect").value;
+    window.open(`/student_report?sheet=${s}&student=${n}`);
+};
+
+    
 //if(data.photo_url) qs("studentPhoto").src=data.photo_url;
 
 /* Semester Cards */
