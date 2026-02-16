@@ -637,8 +637,23 @@ qs("studName").textContent=student;
 qs("arrears").textContent=data.arrears;
 qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
 qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
+if(data.photo_url){
+        qs("studentPhoto").src=data.photo_url;
+        qs("photoLink").href=data.photo_url;
+    }
 
-if(data.photo_url) qs("studentPhoto").src=data.photo_url;
+    function fill(list,obj){
+        clear(list);
+        Object.entries(obj).forEach(([k,v])=>{
+            list.innerHTML+=`<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
+        });
+    }
+    fill(qs("personalDetails"),data.sections.personal);
+    fill(qs("parentDetails"),data.sections.parent);
+    //fill(qs("academicDetails"),data.sections.academic);
+    fill(qs("otherDetails"),data.sections.other);
+
+//if(data.photo_url) qs("studentPhoto").src=data.photo_url;
 
 /* Semester Cards */
 qs("semesterResults").innerHTML="";
