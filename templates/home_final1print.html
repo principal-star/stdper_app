@@ -637,68 +637,8 @@ qs("studName").textContent=student;
 qs("arrears").textContent=data.arrears;
 qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
 qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
-if(data.photo_url){
-        qs("studentPhoto").src=data.photo_url;
-        qs("photoLink").href=data.photo_url;
-    }
 
-function fill(list,obj){
-    clear(list);
-    Object.entries(obj).forEach(([k,v])=>{
-        list.innerHTML+=`<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
-    });
-}
-fill(qs("personalDetails"),data.sections.personal);
-fill(qs("parentDetails"),data.sections.parent);
-//fill(qs("academicDetails"),data.sections.academic);
-fill(qs("otherDetails"),data.sections.other);
-    renderChart("gradeChart","bar",
-        Object.keys(data.grades),
-        Object.values(data.grades)
-    );
-
-    renderChart("semArrearBarChart","bar",
-        data.sem_arrears_labels,
-        data.sem_arrears_values,true
-    );
-
-    renderChart("semArrearLineChart","line",
-        data.sem_arrears_labels,
-        data.sem_arrears_values,true
-    );
-
-    renderChart("gpaTrendChart","line",
-        data.sem_gpa_labels,
-        data.sem_gpa_values
-    );
-
-    renderChart("rankTrendChart","line",
-        data.sem_gpa_labels,
-        data.sem_rank_values,true
-    );
-}
-
-function renderChart(id,type,labels,values,intY=false){
-    const ctx=qs(id);
-    if(ctx.chart) ctx.chart.destroy();
-    ctx.chart=new Chart(ctx,{
-        type,
-        data:{labels,datasets:[{data:values,backgroundColor:colors(labels.length)}]},
-        options:{
-            plugins:{legend:{display:false}},
-            scales:{y:{beginAtZero:true,ticks:{precision:intY?0:2}}}
-        }
-    });
-}
-
-qs("pdfStudentBtn").onclick=()=>{
-    const s=qs("sheetSelect").value;
-    const n=qs("studentSelect").value;
-    window.open(`/student_report?sheet=${s}&student=${n}`);
-};
-
-    
-//if(data.photo_url) qs("studentPhoto").src=data.photo_url;
+if(data.photo_url) qs("studentPhoto").src=data.photo_url;
 
 /* Semester Cards */
 qs("semesterResults").innerHTML="";
@@ -1253,6 +1193,65 @@ async function loadFeatureF5() {
 
     html += "</table>";
     div.innerHTML = html;
+}
+function renderSemesterGrid(semesterSubjects) {
+    const grid = document.getElementById("semesterGrid");
+    grid.innerHTML = "";
+
+    const semesters = Object.keys(semesterSubjects).sort();
+
+    semesters.forEach((sem, index) => {
+
+        const col = document.createElement("div");
+        col.className = "col-md-3 mb-3";
+        col.style.background = SEM_COLORS[sem] || "#f5f5f5";
+        col.style.borderRadius = "8px";
+        col.style.padding = "10px";
+
+        let html = `<h6 class="fw-bold text-center">${sem}</h6>`;
+        html += `<table class="table table-sm table-bordered">`;
+
+        semesterSubjects[sem].forEach(s => {
+            html += `<tr>
+                        <td>${s.subject}</td>
+                        <td class="fw-bold">${s.grade}</td>
+                     </tr>`;
+        });
+
+        html += "</table>";
+        col.innerHTML = html;
+
+        grid.appendChild(col);
+    });
+}
+function renderSemesterTable(data) {
+
+    const container = qs("semesterTable");
+    container.innerHTML = "";
+
+    const semesters = Object.keys(data.semester_results).sort();
+
+    let html = "<table class='table table-bordered'><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<th style="background:${color}">${sem}</th>`;
+    });
+    html += "</tr><tr>";
+
+    semesters.forEach(sem => {
+        const color = data.semester_colors[sem] || "#ffffff";
+        html += `<td style="background:${color}">`;
+
+        data.semester_results[sem].forEach(r => {
+            html += `<div><b>${r.subject}</b> : ${r.grade}</div>`;
+        });
+
+        html += "</td>";
+    });
+
+    html += "</tr></table>";
+    container.innerHTML = html;
 }
 
     
