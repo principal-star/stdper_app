@@ -584,9 +584,10 @@ function colors(n){
 }
 
 /* ================= PAGE LOAD ================= */
-window.onload=()=>{
+document.addEventListener("DOMContentLoaded",()=>{
     loadStudents();
     loadSubjectCodes();
+
 
     qs("sheetSelect").onchange=()=>{
         loadStudents();
@@ -639,6 +640,22 @@ qs("cgpaBadge").textContent="CGPA: "+data.cgpa;
 qs("rankBadge").textContent=`Rank: ${data.rank}/${data.class_size}`;
 
 if(data.photo_url) qs("studentPhoto").src=data.photo_url;
+/* ================= DETAILS LISTS ================= */
+function fillDetails(id,obj){
+    const el = qs(id);
+    el.innerHTML="";
+    if(!obj) return;
+
+    Object.entries(obj).forEach(([k,v])=>{
+        if(v!==null && v!==""){
+            el.innerHTML += `<li class="list-group-item"><b>${k}</b>: ${v}</li>`;
+        }
+    });
+}
+
+fillDetails("personalDetails", data.sections?.personal);
+fillDetails("parentDetails", data.sections?.parent);
+fillDetails("otherDetails", data.sections?.other);
 
 /* Semester Cards */
 qs("semesterResults").innerHTML="";
@@ -695,29 +712,80 @@ fillList("belowStudentsList",tb.bottom,"arrears");
 
 /* ================= COURSE ARREARS ================= */
 async function loadCourseArrears(){
+
 const scope=document.querySelector('input[name="courseScope"]:checked').value;
 const sheet=qs("sheetSelect").value;
+
+qs("coursesArrearTable").innerHTML="Processing...";
+
 const data=await post("/course_arrears",{scope,sheet});
-qs("coursesArrearTable").innerHTML=data.html;
+
+if(!Array.isArray(data) || data.length===0){
+    qs("coursesArrearTable").innerHTML="<div class='text-muted'>No data</div>";
+    return;
 }
+
+let html=`<table class="table table-bordered table-sm">
+<thead>
+<tr><th>Subject Code</th><th>Arrear Count</th></tr>
+</thead><tbody>`;
+
+data.forEach(r=>{
+    html+=`<tr><td>${r.subject}</td><td>${r.count}</td></tr>`;
+});
+
+html+="</tbody></table>";
+
+qs("coursesArrearTable").innerHTML=html;
+}
+
 
 /* ================= SUBJECT ANALYTICS ================= */
 async function loadFailureList(){
+
 const subject=qs("subjectCodeSelect").value;
 const scope=document.querySelector('input[name="subjectScope"]:checked').value;
 const sheet=qs("sheetSelect").value;
-const d=await post("/subject_analytics",{subject,scope,sheet});
+
 qs("failureListCard").style.display="block";
-qs("failureList").innerHTML=d.failures.map(f=>`${f.name} (${f.batch})`).join("<br>");
+qs("gradeChartCard").style.display="none";
+qs("failureList").innerHTML="Loading...";
+
+const d=await post("/subject_analytics",{subject,scope,sheet});
+
+if(!d || !d.failures || d.failures.length===0){
+    qs("failureList").innerHTML="<div class='text-success'>No failures 🎉</div>";
+    return;
 }
 
+qs("failureList").innerHTML = d.failures.map(f=>`
+<div class="border-bottom py-1">
+    <b>${f.name}</b>
+    <span class="badge bg-danger ms-2">${f.batch}</span>
+</div>`).join("");
+
+}
+
+
 async function loadGradeChart(){
+
 const subject=qs("subjectCodeSelect").value;
 const scope=document.querySelector('input[name="subjectScope"]:checked').value;
 const sheet=qs("sheetSelect").value;
+
+qs("gradeChartCard").style.display="block";
+qs("failureListCard").style.display="none";
+
 const d=await post("/subject_analytics",{subject,scope,sheet});
+
+if(!d || !d.grades || Object.keys(d.grades).length===0){
+    qs("gradeChartCard").innerHTML="<div class='p-3 text-muted'>No grade data</div>";
+    return;
+}
+
 drawChart("gradeSubjectChart","bar",d.grades);
 }
+
 
 /* ================= HELPERS ================= */
 function fillList(id,list,key){
@@ -1253,7 +1321,8 @@ function renderSemesterTable(data) {
     html += "</tr></table>";
     container.innerHTML = html;
 }
-
+Chart.defaults.animation = false;
+Chart.defaults.responsive = true;
     
 </script> 
 </body>
