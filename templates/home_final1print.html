@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,7 +8,7 @@
     <!-- Bootstrap -->
     <link rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    
+
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -566,9 +567,6 @@
 </div>
 
 <script>
-/* ===== EVENT LOCK (PREVENT DOUBLE BINDING) ===== */
-window.__handlersAttached = false;
-    
 /* ================= COMMON ================= */
 const API = {
     students: "/students",
@@ -596,34 +594,9 @@ function colors(n){
 }
 
 /* ================= PAGE LOAD ================= */
-document.addEventListener("DOMContentLoaded", initPage);
-
-function initPage(){
-
-    if(window.__handlersAttached) return;
-    window.__handlersAttached = true;
-
+window.onload=()=>{
     loadStudents();
     loadSubjectCodes();
-
-    qs("sheetSelect").addEventListener("change", ()=>{
-        loadStudents();
-        loadSubjectCodes();
-    });
-
-    qs("studentSearch").addEventListener("keyup", ()=>{
-        const q=qs("studentSearch").value.toLowerCase();
-        [...qs("studentSelect").options].forEach(o=>{
-            o.hidden=!o.value.toLowerCase().includes(q);
-        });
-    });
-
-    qs("btnAnalytics").addEventListener("click", generateAnalytics);
-    qs("btnCoursesArrear").addEventListener("click", unifiedCourseArrears);
-    qs("btnFailureList").addEventListener("click", unifiedFailureList);
-    qs("btnGradeBar").addEventListener("click", unifiedGradeChart);
-}
-
 
 
     qs("sheetSelect").onchange=()=>{
@@ -1223,7 +1196,7 @@ async function loadFeatureF1() {
     });
 }
 
-let deptPassChart;
+let featureChart;
 
 async function loadFeatureF2(){
 
@@ -1238,33 +1211,36 @@ async function loadFeatureF2(){
         return;
     }
 
-    /* TABLE */
+    // ---------- TABLE ----------
     let html=`<table class="table table-bordered table-sm text-center">
-    <thead class="table-dark"><tr><th>Subject</th>`;
-    res.batches.forEach(b=>html+=`<th>${b}</th>`);
-    html+="</tr></thead><tbody>";
+    <thead class="table-dark">
+        <tr>
+            <th>Subject</th>`;
 
-    res.subjects.forEach((s,i)=>{
-        html+=`<tr><td><b>${s}</b></td>`;
+    res.batches.forEach(b=> html+=`<th>${b}</th>`);
+    html+=`</tr></thead><tbody>`;
+
+    res.subjects.forEach((sub,i)=>{
+        html+=`<tr><td><b>${sub}</b></td>`;
         res.batches.forEach(b=>{
-            html+=`<td>${res.matrix[i][b]??"-"}</td>`;
+            html+=`<td>${res.matrix[i][b] ?? "-"}</td>`;
         });
-        html+="</tr>";
+        html+=`</tr>`;
     });
 
     html+="</tbody></table>";
     div.innerHTML=html;
 
-    /* CHART */
+    // ---------- CHART ----------
     chartCard.style.display="block";
 
-    if(deptPassChart) deptPassChart.destroy();
+    if(featureChart) featureChart.destroy();
 
-    deptPassChart=new Chart(qs("featureChart"),{
+    featureChart=new Chart(qs("featureChart"),{
         type:"bar",
         data:{
             labels:res.subjects,
-            datasets:res.batches.map(b=>({
+            datasets:res.batches.map((b,idx)=>({
                 label:b,
                 data:res.subjects.map((_,i)=>res.matrix[i][b]||0)
             }))
@@ -1276,7 +1252,6 @@ async function loadFeatureF2(){
         }
     });
 }
-
 async function loadFeatureF3(){
 
     const sheet = qs("sheetSelect").value;
@@ -1427,91 +1402,7 @@ function cutoffColor(v){
     if(v>=1) return "table-info";
     return "table-light";
 }
-async function unifiedFailureList(){
-
-    const subject=qs("subjectCodeSelect").value;
-    const scope=document.querySelector('input[name="subjectScope"]:checked').value;
-    const sheet=qs("sheetSelect").value;
-    const dept=qs("departmentSelect").value;
-
-    qs("failureListCard").style.display="block";
-    qs("gradeChartCard").style.display="none";
-    qs("failureList").innerHTML="Loading...";
-
-    const data=await post("/subject_analytics",{subject,scope,sheet,department:dept});
-
-    if(!data || !data.failures || data.failures.length===0){
-        qs("failureList").innerHTML="<div class='text-success'>No failures 🎉</div>";
-        return;
-    }
-
-    qs("failureList").innerHTML=data.failures.map(s=>`
-        <div class="border-bottom py-1">
-            <b>${s.name}</b>
-            <span class="badge bg-danger ms-2">${s.batch}</span>
-        </div>`).join("");
-}
-let unifiedGradeChartObj;
-
-async function unifiedGradeChart(){
-
-    const subject=qs("subjectCodeSelect").value;
-    const scope=document.querySelector('input[name="subjectScope"]:checked').value;
-    const sheet=qs("sheetSelect").value;
-    const dept=qs("departmentSelect").value;
-
-    qs("gradeChartCard").style.display="block";
-    qs("failureListCard").style.display="none";
-
-    const data=await post("/subject_analytics",{subject,scope,sheet,department:dept});
-
-    if(!data || !data.grades){
-        qs("gradeChartCard").innerHTML="<div class='p-3 text-muted'>No grade data</div>";
-        return;
-    }
-
-    const ctx=qs("gradeSubjectChart");
-    if(unifiedGradeChartObj) unifiedGradeChartObj.destroy();
-
-    unifiedGradeChartObj=new Chart(ctx,{
-        type:"bar",
-        data:{
-            labels:Object.keys(data.grades),
-            datasets:[{
-                label:"Students",
-                data:Object.values(data.grades),
-                backgroundColor:colors(Object.keys(data.grades).length)
-            }]
-        },
-        options:{scales:{y:{beginAtZero:true}}}
-    });
-}
-async function unifiedCourseArrears(){
-
-    const scope=document.querySelector('input[name="courseScope"]:checked').value;
-    const sheet=qs("sheetSelect").value;
-    const dept=qs("departmentSelect").value;
-
-    qs("coursesArrearTable").innerHTML="Processing...";
-
-    const data=await post("/course_arrears",{scope,sheet,department:dept});
-
-    if(!data || data.length===0){
-        qs("coursesArrearTable").innerHTML="<div class='text-muted'>No data</div>";
-        return;
-    }
-
-    let html=`<table class="table table-bordered table-sm">
-    <thead><tr><th>Subject Code</th><th>Arrears</th></tr></thead><tbody>`;
-
-    data.forEach(r=>{
-        html+=`<tr><td>${r.subject}</td><td>${r.count}</td></tr>`;
-    });
-
-    html+="</tbody></table>";
-    qs("coursesArrearTable").innerHTML=html;
-}
-   
+    
 </script> 
 </body>
 </html>
