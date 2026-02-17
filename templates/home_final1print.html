@@ -359,7 +359,16 @@
         <h6>Department Dashboard</h6>
         <div id="f5-dashboard"></div>
     </div>
-
+    <!-- new stacked bar chart 17226-->
+    <div class="card mt-3" id="featureChartCard" style="display:none;">
+        <div class="card-header bg-primary text-white">
+            Visualization
+        </div>
+        <div class="card-body">
+            <canvas id="featureChart"></canvas>
+        </div>
+    </div>
+    <!-- End here -->
 
 
 
@@ -1185,40 +1194,100 @@ async function loadFeatureF1() {
             </tr>`;
     });
 }
-async function loadFeatureF2() {
+
+let featureChart;
+
+async function loadFeatureF2(){
+
     const dept = qs("departmentSelect").value;
+    const res = await post("/subject_pass_percentage_dept",{department:dept});
+
     const div = qs("f2-table");
-    div.innerHTML = "Loading...";
+    const chartCard = qs("featureChartCard");
 
-    const data = await post("/subject_pass_percentage_dept", { department: dept });
+    if(!res || !res.subjects){
+        div.innerHTML="<div class='text-danger'>No data</div>";
+        return;
+    }
 
-    let html = `<table class="table table-bordered">
-        <tr><th>Subject</th><th>Pass %</th></tr>`;
+    // ---------- TABLE ----------
+    let html=`<table class="table table-bordered table-sm text-center">
+    <thead class="table-dark">
+        <tr>
+            <th>Subject</th>`;
 
-    data.forEach(r => {
-        html += `<tr><td>${r.subject}</td><td>${r.pass_percent}</td></tr>`;
+    res.batches.forEach(b=> html+=`<th>${b}</th>`);
+    html+=`</tr></thead><tbody>`;
+
+    res.subjects.forEach((sub,i)=>{
+        html+=`<tr><td><b>${sub}</b></td>`;
+        res.batches.forEach(b=>{
+            html+=`<td>${res.matrix[i][b] ?? "-"}</td>`;
+        });
+        html+=`</tr>`;
     });
 
-    html += "</table>";
-    div.innerHTML = html;
+    html+="</tbody></table>";
+    div.innerHTML=html;
+
+    // ---------- CHART ----------
+    chartCard.style.display="block";
+
+    if(featureChart) featureChart.destroy();
+
+    featureChart=new Chart(qs("featureChart"),{
+        type:"bar",
+        data:{
+            labels:res.subjects,
+            datasets:res.batches.map((b,idx)=>({
+                label:b,
+                data:res.subjects.map((_,i)=>res.matrix[i][b]||0)
+            }))
+        },
+        options:{
+            responsive:true,
+            plugins:{legend:{position:"bottom"}},
+            scales:{y:{beginAtZero:true,max:100}}
+        }
+    });
 }
-async function loadFeatureF3() {
+async function loadFeatureF3(){
+
     const sheet = qs("sheetSelect").value;
+    const res = await post("/cutoff_vs_arrears_batch",{sheet});
+
     const div = qs("f3-table");
-    div.innerHTML = "Loading...";
+    qs("featureChartCard").style.display="none";
 
-    const data = await post("/cutoff_vs_arrears_batch", { sheet });
+    if(!res || !res.cutoffs){
+        div.innerHTML="<div class='text-danger'>No data</div>";
+        return;
+    }
 
-    let html = `<table class="table table-bordered">
-        <tr><th>Cutoff Range</th><th>Arrears Count</th></tr>`;
+    let html=`<table class="table table-bordered table-sm text-center">
+    <thead class="table-dark">
+        <tr>
+            <th>Cutoff Range</th>`;
 
-    data.forEach(r => {
-        html += `<tr><td>${r.cutoff}</td><td>${r.count}</td></tr>`;
+    res.columns.forEach(c=> html+=`<th>${c}</th>`);
+    html+=`</tr></thead><tbody>`;
+
+    res.cutoffs.forEach((cut,i)=>{
+        html+=`<tr><td><b>${cut}</b></td>`;
+
+        res.columns.forEach(col=>{
+            let v=res.matrix[i][col];
+            html+=`<td class="${cutoffColor(v)}">${v??""}</td>`;
+        });
+
+        html+=`</tr>`;
     });
 
-    html += "</table>";
-    div.innerHTML = html;
+    html+="</tbody></table>";
+    div.innerHTML=html;
 }
+
+    
 async function loadFeatureF4() {
     const dept = qs("departmentSelect").value;
     const div = qs("f4-table");
@@ -1323,6 +1392,15 @@ function renderSemesterTable(data) {
 }
 Chart.defaults.animation = false;
 Chart.defaults.responsive = true;
+<!-- Added 17226 -->
+function cutoffColor(v){
+    if(v==null || v==="") return "";
+    if(v>=10) return "table-danger";
+    if(v>=6) return "table-success";
+    if(v>=3) return "table-warning";
+    if(v>=1) return "table-info";
+    return "table-light";
+}
     
 </script> 
 </body>
