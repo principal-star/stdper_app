@@ -1156,26 +1156,6 @@ def dept_subject_pass_percentage():
     return jsonify(output)
 """
 
-@app.route("/cutoff_vs_arrears_batch", methods=["POST"])
-def cutoff_vs_arrears_batch():
-    sheet = request.form["sheet"]
-    df = load_sheet(sheet)
-
-    buckets = {"<150":0, "150-175":0, "175-200":0, ">200":0}
-
-    for _, r in df.iterrows():
-        arrears = r["Arrears"]
-        cutoff = r["Cutoff"]
-
-        if arrears > 0:
-            if cutoff < 150: buckets["<150"] += 1
-            elif cutoff <= 175: buckets["150-175"] += 1
-            elif cutoff <= 200: buckets["175-200"] += 1
-            else: buckets[">200"] += 1
-
-    return jsonify([
-        {"cutoff": k, "count": v} for k,v in buckets.items()
-    ])
 
 """
 @app.route("/cutoff_arrear_batch", methods=["POST"])
@@ -1291,39 +1271,7 @@ def course_arrears():
         counts[code] += df[col].apply(is_arrear).sum()
 
     return jsonify([{"subject":k,"count":int(v)} for k,v in sorted(counts.items())])
-@app.post("/subject_pass_percentage_dept")
-def subject_pass_percentage_dept():
 
-    dept = request.form.get("department")
-    sheets = get_all_sheets()
-
-    matrix={}
-    subjects=set()
-
-    for sh in sheets:
-        df=load_sheet(sh)
-        if dept and dept!="All":
-            df=df[df["Department"]==dept]
-
-        grade_cols=[c for c in df.columns if re.search(r"Sem\d+_.*_\d+",c)]
-
-        for col in grade_cols:
-            sub=col.split("_")[1]
-            subjects.add(sub)
-
-            passed=df[col].astype(str).str.upper().isin(["O","A+","A","B+","B","C","P"]).sum()
-            total=df[col].notna().sum()
-            percent=round((passed/total)*100,2) if total else 0
-
-            matrix.setdefault(sub,{})[sh]=percent
-
-    subjects=sorted(subjects)
-
-    return jsonify({
-        "subjects":subjects,
-        "batches":sheets,
-        "matrix":[matrix.get(s,{}) for s in subjects]
-    })
 @app.post("/cutoff_vs_arrears_batch")
 def cutoff_vs_arrears_batch():
 
@@ -1353,34 +1301,6 @@ def cutoff_vs_arrears_batch():
         matrix.append(row)
 
     return jsonify({"cutoffs":labels,"columns":columns,"matrix":matrix})
-@app.post("/subject_analytics")
-def subject_analytics():
-
-    subject=request.form.get("subject")
-    scope=request.form.get("scope")
-    sheet=request.form.get("sheet")
-
-    df=load_sheet(sheet)
-
-    col=[c for c in df.columns if subject in c][0]
-
-    failures=df[df[col].astype(str).str.upper().isin(["RA","U","F","FAIL"])]
-    fail_list=[{"name":r["Name"],"batch":sheet} for _,r in failures.iterrows()]
-
-    grade_counts=df[col].value_counts().to_dict()
-
-    return jsonify({"failures":fail_list,"grades":grade_counts})
-@app.post("/subject_codes")
-def subject_codes():
-    sheet=request.form.get("sheet")
-    df=load_sheet(sheet)
-
-    codes=set()
-    for c in df.columns:
-        m=re.search(r"Sem\d+_([A-Za-z0-9]+)_",c)
-        if m: codes.add(m.group(1))
-
-    return jsonify(sorted(codes))
 
 """
 @app.route("/dept_dashboard", methods=["POST"])
@@ -1411,6 +1331,7 @@ def dept_dashboard():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
